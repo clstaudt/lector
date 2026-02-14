@@ -7,7 +7,6 @@ transitions run against real numpy arrays.
 
 from __future__ import annotations
 
-import threading
 import time
 from unittest.mock import MagicMock, patch
 
@@ -15,7 +14,6 @@ import numpy as np
 import pytest
 
 from lector.player import AudioPlayer
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,15 +25,15 @@ def _make_player(fake_engine, text: str = "First. Second. Third.", **kw) -> Audi
     phonemes = fake_engine.tokenizer.phonemize(text, "en-us")
     batches = fake_engine._split_phonemes(phonemes)
     style = fake_engine.get_voice_style("af_sky")
-    defaults = dict(
-        sample_rate=24_000,
-        voice="af_sky",
-        speed=1.0,
-        lang="en-us",
-        engine=fake_engine,
-        voice_style=style,
-        phoneme_batches=batches,
-    )
+    defaults = {
+        "sample_rate": 24_000,
+        "voice": "af_sky",
+        "speed": 1.0,
+        "lang": "en-us",
+        "engine": fake_engine,
+        "voice_style": style,
+        "phoneme_batches": batches,
+    }
     defaults.update(kw)
     return AudioPlayer(**defaults)
 
@@ -207,7 +205,6 @@ class TestSpeedControls:
         while not p.generation_done and time.monotonic() < deadline:
             time.sleep(0.05)
 
-        original_chunks = p.chunks_received
         original_epoch = p._gen_epoch
 
         p.speed_up()

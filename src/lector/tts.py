@@ -65,9 +65,7 @@ def download_models(force: bool = False) -> None:
                     )
 
             urllib.request.urlretrieve(url, dest, reporthook=_hook)
-            progress.update(
-                task_id, completed=progress.tasks[task_id].total or 0
-            )
+            progress.update(task_id, completed=progress.tasks[task_id].total or 0)
 
 
 def ensure_models() -> tuple[Path, Path]:
@@ -112,7 +110,7 @@ def create_player(
     """
     engine = get_engine()
     phonemes = engine.tokenizer.phonemize(text, lang)
-    batched = engine._split_phonemes(phonemes)
+    batched = engine._split_phonemes(phonemes)  # noqa: SLF001
     voice_style = engine.get_voice_style(voice)
     return AudioPlayer(
         sample_rate=24_000,

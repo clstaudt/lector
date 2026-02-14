@@ -14,13 +14,15 @@ pipeline) runs for real.
 
 from __future__ import annotations
 
-from io import StringIO
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from lector.cli import app
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 runner = CliRunner()
 
@@ -34,8 +36,8 @@ def _patch_tts_and_playback(fake_engine):
     """Context manager that replaces the TTS engine and suppresses audio."""
     return (
         patch("lector.tts.get_engine", return_value=fake_engine),
-        patch("lector.tts._kokoro", fake_engine),     # bypass singleton check
-        patch("lector.cli.run_player"),                # suppress audio hardware
+        patch("lector.tts._kokoro", fake_engine),  # bypass singleton check
+        patch("lector.cli.run_player"),  # suppress audio hardware
     )
 
 
@@ -82,9 +84,7 @@ class TestReadCommand:
     def test_read_custom_voice_and_speed(self, fake_engine) -> None:
         p1, p2, p3 = _patch_tts_and_playback(fake_engine)
         with p1, p2, p3 as mock_play:
-            result = runner.invoke(
-                app, ["read", "--voice", "af_nicole", "--speed", "1.5", "Test"]
-            )
+            result = runner.invoke(app, ["read", "--voice", "af_nicole", "--speed", "1.5", "Test"])
 
         assert result.exit_code == 0
         player = mock_play.call_args[0][0]
@@ -94,9 +94,7 @@ class TestReadCommand:
     def test_read_custom_lang(self, fake_engine) -> None:
         p1, p2, p3 = _patch_tts_and_playback(fake_engine)
         with p1, p2, p3 as mock_play:
-            result = runner.invoke(
-                app, ["read", "--lang", "en-gb", "Good day"]
-            )
+            result = runner.invoke(app, ["read", "--lang", "en-gb", "Good day"])
 
         assert result.exit_code == 0
         player = mock_play.call_args[0][0]
@@ -104,8 +102,12 @@ class TestReadCommand:
 
     def test_read_clipboard(self, fake_engine) -> None:
         p1, p2, p3 = _patch_tts_and_playback(fake_engine)
-        with p1, p2, p3 as mock_play, \
-             patch("lector.cli.read_clipboard", return_value="From clipboard"):
+        with (
+            p1,
+            p2,
+            p3 as mock_play,
+            patch("lector.cli.read_clipboard", return_value="From clipboard"),
+        ):
             result = runner.invoke(app, ["read", "--clipboard"])
 
         assert result.exit_code == 0
@@ -144,9 +146,7 @@ class TestReadCommand:
         """Verify create_player actually processed the text into chunks."""
         p1, p2, p3 = _patch_tts_and_playback(fake_engine)
         with p1, p2, p3 as mock_play:
-            result = runner.invoke(
-                app, ["read", "First sentence. Second sentence. Third."]
-            )
+            result = runner.invoke(app, ["read", "First sentence. Second sentence. Third."])
 
         assert result.exit_code == 0
         player = mock_play.call_args[0][0]
@@ -172,7 +172,7 @@ class TestVoicesCommand:
         with patch("lector.cli.get_engine", return_value=fake_engine):
             result = runner.invoke(app, ["voices"])
 
-        lines = [l.strip() for l in result.output.strip().splitlines() if l.strip()]
+        lines = [line.strip() for line in result.output.strip().splitlines() if line.strip()]
         assert lines == sorted(lines)
 
 

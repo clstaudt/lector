@@ -14,7 +14,6 @@ import pytest
 
 from lector.utils import read_clipboard, read_stdin
 
-
 # ---------------------------------------------------------------------------
 # read_clipboard
 # ---------------------------------------------------------------------------
@@ -38,9 +37,12 @@ class TestReadClipboard:
         assert mock_run.call_args[0][0] == ["pbpaste"]
 
     def test_linux_prefers_wl_paste(self) -> None:
+        def which_wl_paste(cmd: str) -> str | None:
+            return "/usr/bin/wl-paste" if cmd == "wl-paste" else None
+
         with (
             patch("lector.utils.platform.system", return_value="Linux"),
-            patch("lector.utils.shutil.which", side_effect=lambda cmd: "/usr/bin/wl-paste" if cmd == "wl-paste" else None),
+            patch("lector.utils.shutil.which", side_effect=which_wl_paste),
             patch("lector.utils.subprocess.run") as mock_run,
         ):
             mock_run.return_value = subprocess.CompletedProcess(
@@ -93,9 +95,9 @@ class TestReadClipboard:
         with (
             patch("lector.utils.platform.system", return_value="Linux"),
             patch("lector.utils.shutil.which", return_value=None),
+            pytest.raises(RuntimeError, match="No clipboard tool found"),
         ):
-            with pytest.raises(RuntimeError, match="No clipboard tool found"):
-                read_clipboard()
+            read_clipboard()
 
     def test_windows_uses_powershell(self) -> None:
         with (
@@ -112,9 +114,11 @@ class TestReadClipboard:
         assert "powershell" in cmd[0].lower() or cmd[0] == "powershell"
 
     def test_unsupported_platform_raises(self) -> None:
-        with patch("lector.utils.platform.system", return_value="Haiku"):
-            with pytest.raises(RuntimeError, match="not supported"):
-                read_clipboard()
+        with (
+            patch("lector.utils.platform.system", return_value="Haiku"),
+            pytest.raises(RuntimeError, match="not supported"),
+        ):
+            read_clipboard()
 
     def test_strips_whitespace(self) -> None:
         with (

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import platform
 import sys
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -25,17 +24,17 @@ console = Console(stderr=True)
 
 @app.command()
 def read(
-    text: Optional[str] = typer.Argument(None, help="Text to read aloud."),
+    text: str | None = typer.Argument(None, help="Text to read aloud."),
     clipboard: bool = typer.Option(
         False, "--clipboard", "-c", help="Read text from the system clipboard (pbpaste)."
     ),
     voice: str = typer.Option(
         "af_sky", "--voice", "-v", help="Voice name (run 'lector voices' to list)."
     ),
-    speed: float = typer.Option(1.0, "--speed", "-s", help="Speech speed (0.5–2.0)."),
+    speed: float = typer.Option(1.0, "--speed", "-s", help="Speech speed (0.5-2.0)."),
     lang: str = typer.Option("en-us", "--lang", "-l", help="Language code."),
 ) -> None:
-    """Read text aloud.
+    r"""Read text aloud.
 
     Text can be given as a positional argument, read from the clipboard
     ([bold]--clipboard[/bold]), or piped via stdin.
@@ -61,7 +60,7 @@ def read(
 
     if not text or not text.strip():
         console.print("[yellow]Nothing to read (empty text).[/yellow]")
-        raise typer.Exit()
+        raise typer.Exit
 
     player = create_player(text.strip(), voice=voice, speed=speed, lang=lang)
     run_player(player)
@@ -89,7 +88,10 @@ def download(
 
 @app.command(name="install-service")
 def install_service() -> None:
-    """[macOS] Install a Quick Action so "Read with Lector · Stop Reading" appears in the right-click Services menu."""
+    """[macOS] Install a Quick Action for the right-click Services menu.
+
+    Adds "Read with Lector / Stop Reading" to Services.
+    """
     if platform.system() != "Darwin":
         console.print("[red]This command is only available on macOS.[/red]")
         raise typer.Exit(1)
@@ -99,9 +101,7 @@ def install_service() -> None:
     console.print(
         "  Select text → right-click → [bold]Services → Read with Lector · Stop Reading[/bold]"
     )
-    console.print(
-        "  Invoke again while playing to stop playback."
-    )
+    console.print("  Invoke again while playing to stop playback.")
     console.print(f"  [dim]Installed to {path}[/dim]")
 
 

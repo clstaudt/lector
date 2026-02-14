@@ -264,20 +264,14 @@ def install_quick_action() -> Path:
 
     Returns the path to the installed ``.workflow`` bundle.
 
-    Raises
+    Raises:
     ------
     RuntimeError
         If called on a non-macOS platform.
     """
     _require_macos()
 
-    workflow_dir = (
-        Path.home()
-        / "Library"
-        / "Services"
-        / "Read with Lector.workflow"
-        / "Contents"
-    )
+    workflow_dir = Path.home() / "Library" / "Services" / "Read with Lector.workflow" / "Contents"
     workflow_dir.mkdir(parents=True, exist_ok=True)
 
     # Remove legacy workflow bundles if present.
@@ -311,9 +305,12 @@ def install_quick_action() -> Path:
         [
             "/System/Library/Frameworks/CoreServices.framework/Frameworks/"
             "LaunchServices.framework/Support/lsregister",
-            "-R", "-f", str(bundle_root),
+            "-R",
+            "-f",
+            str(bundle_root),
         ],
         capture_output=True,
+        check=False,
     )
 
     return bundle_root
@@ -324,19 +321,14 @@ def uninstall_quick_action() -> Path | None:
 
     Returns the path that was removed, or ``None`` if it was not installed.
 
-    Raises
+    Raises:
     ------
     RuntimeError
         If called on a non-macOS platform.
     """
     _require_macos()
 
-    bundle_root = (
-        Path.home()
-        / "Library"
-        / "Services"
-        / "Read with Lector.workflow"
-    )
+    bundle_root = Path.home() / "Library" / "Services" / "Read with Lector.workflow"
     if not bundle_root.exists():
         return None
 

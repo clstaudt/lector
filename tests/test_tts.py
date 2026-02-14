@@ -11,8 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from lector.tts import MODEL_DIR, MODELS, get_model_paths
-
+from lector.player import AudioPlayer
+from lector.tts import MODEL_DIR, MODELS, create_player, download_models, get_model_paths
 
 # ---------------------------------------------------------------------------
 # Pure model-path logic (no mocks)
@@ -53,7 +53,6 @@ class TestModelPaths:
 class TestDownloadModels:
     def test_download_creates_files(self, tmp_path: Path) -> None:
         """download_models should write files to MODEL_DIR via urlretrieve."""
-        from lector.tts import download_models
 
         def fake_urlretrieve(url: str, dest: str | Path, reporthook=None) -> None:
             Path(dest).write_bytes(b"fake model data")
@@ -69,8 +68,6 @@ class TestDownloadModels:
 
     def test_download_skips_existing(self, tmp_path: Path) -> None:
         """download_models should skip files that already exist."""
-        from lector.tts import download_models
-
         for name in MODELS:
             (tmp_path / name).write_bytes(b"existing")
 
@@ -84,8 +81,6 @@ class TestDownloadModels:
 
     def test_download_force_redownloads(self, tmp_path: Path) -> None:
         """download_models(force=True) should re-download even if present."""
-        from lector.tts import download_models
-
         for name in MODELS:
             (tmp_path / name).write_bytes(b"old")
 
@@ -110,37 +105,26 @@ class TestCreatePlayer:
     """Let create_player run its real logic with a fake engine."""
 
     def test_returns_audio_player(self, fake_engine) -> None:
-        from lector.player import AudioPlayer
-        from lector.tts import create_player
-
         with patch("lector.tts.get_engine", return_value=fake_engine):
             player = create_player("Hello. How are you?")
 
         assert isinstance(player, AudioPlayer)
 
     def test_player_has_correct_metadata(self, fake_engine) -> None:
-        from lector.tts import create_player
-
         with patch("lector.tts.get_engine", return_value=fake_engine):
-            player = create_player(
-                "Test text.", voice="af_nicole", speed=1.5, lang="en-gb"
-            )
+            player = create_player("Test text.", voice="af_nicole", speed=1.5, lang="en-gb")
 
         assert player.voice == "af_nicole"
         assert player.speed == 1.5
         assert player.lang == "en-gb"
 
     def test_player_has_phoneme_batches(self, fake_engine) -> None:
-        from lector.tts import create_player
-
         with patch("lector.tts.get_engine", return_value=fake_engine):
             player = create_player("First sentence. Second sentence.")
 
         assert player.expected_chunks >= 2
 
     def test_player_sample_rate(self, fake_engine) -> None:
-        from lector.tts import create_player
-
         with patch("lector.tts.get_engine", return_value=fake_engine):
             player = create_player("Hello.")
 

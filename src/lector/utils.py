@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import sys
 
-
 # ---------------------------------------------------------------------------
 # Text input helpers
 # ---------------------------------------------------------------------------
@@ -21,7 +20,7 @@ def read_clipboard() -> str:
     - **Linux / BSD** — ``xclip`` or ``xsel`` (X11), ``wl-paste`` (Wayland)
     - **Windows** — ``powershell Get-Clipboard``
 
-    Raises
+    Raises:
     ------
     RuntimeError
         If no supported clipboard tool is found.
@@ -38,9 +37,7 @@ def read_clipboard() -> str:
         elif shutil.which("xsel"):
             cmd = ["xsel", "--clipboard", "--output"]
         else:
-            raise RuntimeError(
-                "No clipboard tool found. Install xclip, xsel, or wl-paste."
-            )
+            raise RuntimeError("No clipboard tool found. Install xclip, xsel, or wl-paste.")
     elif system == "Windows":
         cmd = ["powershell", "-NoProfile", "-Command", "Get-Clipboard"]
     else:

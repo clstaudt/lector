@@ -8,9 +8,10 @@ plist generation, …) runs as real code.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Lightweight Kokoro engine stand-in
@@ -55,8 +56,6 @@ class FakeKokoroEngine:
     @staticmethod
     def _split_phonemes(phonemes: str) -> list[str]:
         """Naïve split: one chunk per sentence (period / newline)."""
-        import re
-
         chunks = [c.strip() for c in re.split(r"[.\n]+", phonemes) if c.strip()]
         return chunks or [phonemes]
 
@@ -81,7 +80,7 @@ class FakeKokoroEngine:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def fake_engine() -> FakeKokoroEngine:
     """A ready-to-use fake TTS engine (no model files needed)."""
     return FakeKokoroEngine()

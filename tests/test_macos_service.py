@@ -9,7 +9,8 @@ structure rather than doing fragile string matching.
 from __future__ import annotations
 
 import plistlib
-from pathlib import Path
+import time
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -20,6 +21,8 @@ from lector.macos_service import (
     uninstall_quick_action,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Platform guard
@@ -33,9 +36,11 @@ class TestRequireMacOS:
 
     @pytest.mark.parametrize("os_name", ["Linux", "Windows", "FreeBSD"])
     def test_raises_on_non_darwin(self, os_name: str) -> None:
-        with patch("lector.macos_service.platform.system", return_value=os_name):
-            with pytest.raises(RuntimeError, match="only available on macOS"):
-                _require_macos()
+        with (
+            patch("lector.macos_service.platform.system", return_value=os_name),
+            pytest.raises(RuntimeError, match="only available on macOS"),
+        ):
+            _require_macos()
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +125,8 @@ class TestInstallQuickAction:
         bundle = self._install(tmp_path)
         wflow_path = bundle / "Contents" / "document.wflow"
         data = plistlib.loads(wflow_path.read_bytes())
-        assert data["workflowMetaData"]["workflowTypeIdentifier"] == "com.apple.Automator.servicesMenu"
+        type_id = data["workflowMetaData"]["workflowTypeIdentifier"]
+        assert type_id == "com.apple.Automator.servicesMenu"
 
     def test_wflow_uses_zsh_shell(self, tmp_path: Path) -> None:
         bundle = self._install(tmp_path)
@@ -142,7 +148,6 @@ class TestInstallQuickAction:
         bundle1 = self._install(tmp_path)
         mtime1 = (bundle1 / "Contents" / "document.wflow").stat().st_mtime_ns
 
-        import time
         time.sleep(0.01)  # ensure different mtime
 
         bundle2 = self._install(tmp_path)
@@ -165,9 +170,11 @@ class TestInstallQuickAction:
         assert "lsregister" in cmd[0]
 
     def test_raises_on_non_macos(self) -> None:
-        with patch("lector.macos_service.platform.system", return_value="Linux"):
-            with pytest.raises(RuntimeError, match="only available on macOS"):
-                install_quick_action()
+        with (
+            patch("lector.macos_service.platform.system", return_value="Linux"),
+            pytest.raises(RuntimeError, match="only available on macOS"),
+        ):
+            install_quick_action()
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +209,11 @@ class TestUninstallQuickAction:
         assert result is None
 
     def test_raises_on_non_macos(self) -> None:
-        with patch("lector.macos_service.platform.system", return_value="Linux"):
-            with pytest.raises(RuntimeError, match="only available on macOS"):
-                uninstall_quick_action()
+        with (
+            patch("lector.macos_service.platform.system", return_value="Linux"),
+            pytest.raises(RuntimeError, match="only available on macOS"),
+        ):
+            uninstall_quick_action()
 
     def test_roundtrip_install_then_uninstall(self, tmp_path: Path) -> None:
         """Install then uninstall should leave no trace."""

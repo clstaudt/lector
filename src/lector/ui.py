@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import atexit
 import os
-import signal
 import select
+import signal
 import sys
 import termios
 import time
 import tty
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -19,7 +20,8 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
-from .player import AudioPlayer
+if TYPE_CHECKING:
+    from .player import AudioPlayer
 
 _PID_FILE = Path.home() / ".lector" / "lector.pid"
 
@@ -99,8 +101,10 @@ def _read_key(timeout: float = 0.05) -> str | None:
             if ch2 == b"[":
                 ch3 = os.read(fd, 1)
                 return {
-                    b"C": "right", b"D": "left",
-                    b"A": "up", b"B": "down",
+                    b"C": "right",
+                    b"D": "left",
+                    b"A": "up",
+                    b"B": "down",
                 }.get(ch3)
         return None
 
@@ -133,15 +137,22 @@ def _build_display(player: AudioPlayer) -> Panel:
     received = player.chunks_received
 
     if player.generation_error:
-        gen_bar = ProgressBar(total=100, completed=(received / expected * 100) if expected else 0, complete_style="red")
-        gen_label = f"[red]✗[/red] {received} / {expected} chunks"
+        pct_err = (received / expected * 100) if expected else 0
+        gen_bar = ProgressBar(
+            total=100,
+            completed=pct_err,
+            complete_style="red",
+        )
+        gen_label = f"[red]\u2717[/red] {received} / {expected} chunks"
     elif player.generation_done:
         gen_bar = ProgressBar(total=100, completed=100, complete_style="green")
         gen_label = f"[green]✓[/green] {received} chunks"
     elif expected > 0:
         pct_gen = received / expected * 100
         gen_bar = ProgressBar(
-            total=100, completed=min(pct_gen, 100), complete_style="magenta",
+            total=100,
+            completed=min(pct_gen, 100),
+            complete_style="magenta",
         )
         gen_label = f"{received} / {expected} chunks"
     else:
@@ -169,7 +180,9 @@ def _build_display(player: AudioPlayer) -> Panel:
         bar_style = "blue"
 
     play_bar = ProgressBar(
-        total=100, completed=min(pct, 100), complete_style=bar_style,
+        total=100,
+        completed=min(pct, 100),
+        complete_style=bar_style,
     )
     time_label = f"{_fmt_time(current)} / {_fmt_time(total_dur)}"
     play_table.add_row("Playback", play_bar, time_label)
@@ -182,21 +195,24 @@ def _build_display(player: AudioPlayer) -> Panel:
     if player.is_finished and player.generation_error:
         status = Text(
             f"✗ Finished ({received}/{expected} chunks — generation error)",
-            style="red", justify="center",
+            style="red",
+            justify="center",
         )
     elif player.is_finished:
         status = Text("✓ Done", style="green", justify="center")
     elif player.is_paused:
         status = Text(
             f"⏸  Paused  ·  chunk {chunk_idx} / {total}{ellipsis}",
-            style="yellow", justify="center",
+            style="yellow",
+            justify="center",
         )
     elif player.playback_time >= player.buffered_duration and not player.generation_done:
         status = Text("⏳ Buffering…", style="dim", justify="center")
     else:
         status = Text(
             f"▶  Playing  ·  chunk {chunk_idx} / {total}{ellipsis}",
-            style="blue", justify="center",
+            style="blue",
+            justify="center",
         )
 
     # -- metadata (centered) --
@@ -204,7 +220,7 @@ def _build_display(player: AudioPlayer) -> Panel:
         ("voice ", "dim"),
         (player.voice, "bold cyan"),
         ("   speed ", "dim"),
-        (f"{player.speed:.1f}×", "bold cyan"),
+        (f"{player.speed:.1f}\u00d7", "bold cyan"),
         ("   lang ", "dim"),
         (player.lang, "bold cyan"),
     )
@@ -212,13 +228,20 @@ def _build_display(player: AudioPlayer) -> Panel:
 
     # -- key hints (gray box) --
     keys = Text.assemble(
-        ("␣", "bold"), " pause  ",
-        ("q", "bold"), " quit  ",
-        ("r", "bold"), " restart  ",
-        ("← h", "bold"), " prev  ",
-        ("→ l", "bold"), " next  ",
-        ("+", "bold"), " faster  ",
-        ("-", "bold"), " slower",
+        ("␣", "bold"),
+        " pause  ",
+        ("q", "bold"),
+        " quit  ",
+        ("r", "bold"),
+        " restart  ",
+        ("← h", "bold"),
+        " prev  ",
+        ("→ l", "bold"),
+        " next  ",
+        ("+", "bold"),
+        " faster  ",
+        ("-", "bold"),
+        " slower",
     )
     keys.justify = "center"
     keys_panel = Panel(keys, border_style="bright_black", padding=(0, 1))
@@ -300,29 +323,31 @@ def _run_interactive(player: AudioPlayer) -> None:
     console = Console(stderr=True)
 
     try:
-        with _CbreakTerminal():
-            with Live(
+        with (
+            _CbreakTerminal(),
+            Live(
                 _build_display(player),
                 console=console,
                 refresh_per_second=10,
                 transient=True,
-            ) as live:
-                while True:
-                    key = _read_key(timeout=0.08)
+            ) as live,
+        ):
+            while True:
+                key = _read_key(timeout=0.08)
 
-                    action = _KEY_ACTIONS.get(key) if key else None
-                    if action == "stop":
-                        player.stop()
-                        break
-                    elif action:
-                        getattr(player, action)()
+                action = _KEY_ACTIONS.get(key) if key else None
+                if action == "stop":
+                    player.stop()
+                    break
+                if action:
+                    getattr(player, action)()
 
+                live.update(_build_display(player))
+
+                if player.is_finished:
                     live.update(_build_display(player))
-
-                    if player.is_finished:
-                        live.update(_build_display(player))
-                        time.sleep(0.5)
-                        break
+                    time.sleep(0.5)
+                    break
     except KeyboardInterrupt:
         pass
     finally:

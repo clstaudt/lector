@@ -37,6 +37,7 @@ class AudioPlayer:
         voice_style: np.ndarray | None = None,
         phoneme_batches: list[str] | None = None,
     ) -> None:
+        """Initialise the player with TTS resources and playback settings."""
         self.sample_rate = sample_rate
 
         # Metadata (for display)
@@ -98,8 +99,10 @@ class AudioPlayer:
 
                 epoch = self._gen_epoch
                 batch = self._phoneme_batches[cursor]
-                audio, _ = self._engine._create_audio(
-                    batch, self._voice_style, self.speed,
+                audio, _ = self._engine._create_audio(  # noqa: SLF001
+                    batch,
+                    self._voice_style,
+                    self.speed,
                 )
 
                 with self._lock:
@@ -112,7 +115,7 @@ class AudioPlayer:
 
             if not self._stopped:
                 self._generation_done = True
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._generation_error = str(exc)
             self._generation_done = True
 
@@ -139,6 +142,7 @@ class AudioPlayer:
             self._stream = None
 
     def toggle_pause(self) -> None:
+        """Toggle between paused and playing."""
         self._paused = not self._paused
 
     def next_chunk(self) -> None:
@@ -169,12 +173,14 @@ class AudioPlayer:
             self._paused = False
 
     def speed_up(self) -> None:
+        """Increase playback speed by one step."""
         old = self.speed
         self.speed = round(min(self.speed + self.SPEED_STEP, self.SPEED_MAX), 1)
         if self.speed != old:
             self._invalidate_future_chunks()
 
     def speed_down(self) -> None:
+        """Decrease playback speed by one step."""
         old = self.speed
         self.speed = round(max(self.speed - self.SPEED_STEP, self.SPEED_MIN), 1)
         if self.speed != old:
@@ -207,34 +213,42 @@ class AudioPlayer:
 
     @property
     def playback_time(self) -> float:
+        """Return current playback position in seconds."""
         return self._play_pos / self.sample_rate
 
     @property
     def buffered_duration(self) -> float:
+        """Return total duration of buffered audio in seconds."""
         return len(self._buffer) / self.sample_rate
 
     @property
     def is_paused(self) -> bool:
+        """Return whether playback is paused."""
         return self._paused
 
     @property
     def is_stopped(self) -> bool:
+        """Return whether playback has been stopped."""
         return self._stopped
 
     @property
     def is_finished(self) -> bool:
+        """Return whether all audio has been generated and played."""
         return self._generation_done and self._play_pos >= len(self._buffer)
 
     @property
     def chunks_received(self) -> int:
+        """Return the number of chunks generated so far."""
         return self._chunks_received
 
     @property
     def expected_chunks(self) -> int:
+        """Return the total number of chunks to generate."""
         return self._expected_chunks
 
     @property
     def generation_done(self) -> bool:
+        """Return whether the generation worker has finished."""
         return self._generation_done
 
     @property
@@ -256,6 +270,7 @@ class AudioPlayer:
 
     @property
     def total_chunks(self) -> int:
+        """Return the number of chunk boundaries recorded so far."""
         return len(self._chunk_starts)
 
     # -- sounddevice callback -----------------------------------------------
@@ -279,9 +294,7 @@ class AudioPlayer:
                 wake_gen = not self._generation_done
             else:
                 to_read = min(frames, available - self._play_pos)
-                outdata[:to_read, 0] = self._buffer[
-                    self._play_pos : self._play_pos + to_read
-                ]
+                outdata[:to_read, 0] = self._buffer[self._play_pos : self._play_pos + to_read]
                 if to_read < frames:
                     outdata[to_read:] = 0
                 self._play_pos += to_read
