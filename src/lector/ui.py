@@ -218,12 +218,31 @@ _KEY_ACTIONS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def run_player(player: AudioPlayer) -> None:
-    """Run the interactive player UI.
+def _run_headless(player: AudioPlayer) -> None:
+    """Play audio without interactive UI (no TTY required).
 
-    Starts generation, waits for the first chunk, then enters the
-    keyboard-driven playback loop with a Rich live display.
+    Used when lector is invoked from Automator, a pipe, or any
+    context without a controlling terminal.
     """
+    player.start_generation()
+
+    deadline = time.monotonic() + 10.0
+    while player.chunks_received == 0 and time.monotonic() < deadline:
+        time.sleep(0.1)
+
+    player.start()
+
+    try:
+        while not player.is_finished:
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        player.stop()
+
+
+def _run_interactive(player: AudioPlayer) -> None:
+    """Run the full interactive player with Rich UI and keyboard controls."""
     player.start_generation()
 
     deadline = time.monotonic() + 5.0
@@ -261,3 +280,16 @@ def run_player(player: AudioPlayer) -> None:
         pass
     finally:
         player.stop()
+
+
+def run_player(player: AudioPlayer) -> None:
+    """Run the player, choosing interactive or headless mode automatically.
+
+    Interactive mode (Rich UI + keyboard controls) is used when stderr
+    is a TTY.  Otherwise falls back to headless playback — suitable for
+    Automator Quick Actions, cron jobs, or piped contexts.
+    """
+    if sys.stderr.isatty():
+        _run_interactive(player)
+    else:
+        _run_headless(player)

@@ -34,6 +34,32 @@ def read_stdin() -> str:
 # macOS Quick Action (Service) installer
 # ---------------------------------------------------------------------------
 
+_WORKFLOW_INFO_PLIST = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Read with Lector</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>runWorkflowAsService</string>
+            <key>NSSendTypes</key>
+            <array>
+                <string>NSStringPboardType</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
+"""
+
 # Automator Quick Action plist template.
 # ``{shell_command}`` is replaced at install time.
 # inputMethod 0 → selected text is piped to the script's stdin.
@@ -100,7 +126,7 @@ _WORKFLOW_PLIST = """\
                 <key>ActionParameters</key>
                 <dict>
                     <key>COMMAND_STRING</key>
-                    <string>{shell_command}</string>
+                    <string>__SHELL_COMMAND__</string>
                     <key>CheckedForUserDefaultShell</key>
                     <true/>
                     <key>inputMethod</key>
@@ -251,15 +277,34 @@ def install_macos_quick_action() -> Path:
     )
     workflow_dir.mkdir(parents=True, exist_ok=True)
 
+    # Write Info.plist — required for macOS to register the service.
+    info_plist_path = workflow_dir / "Info.plist"
+    info_plist_path.write_text(_WORKFLOW_INFO_PLIST, encoding="utf-8")
+
     # Build the shell command.  Selected text arrives on stdin (inputMethod=0).
+    # exec 2>/dev/null silences ALL stderr before Python even starts, so
+    # Automator never sees output to display in an error dialog.
+    # "|| true" ensures exit-code 0 so Automator never flags a failure.
     lector_bin = shutil.which("lector") or "lector"
     shell_command = (
+        "exec 2>/dev/null\n"
         'export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"\n'
-        f'"{lector_bin}" read'
+        f'"{lector_bin}" read || true'
     )
 
-    wflow_xml = _WORKFLOW_PLIST.format(shell_command=xml_escape(shell_command))
+    wflow_xml = _WORKFLOW_PLIST.replace("__SHELL_COMMAND__", xml_escape(shell_command))
     wflow_path = workflow_dir / "document.wflow"
     wflow_path.write_text(wflow_xml, encoding="utf-8")
 
-    return wflow_path.parent.parent  # .workflow bundle root
+    # Tell macOS to re-scan services.
+    bundle_root = wflow_path.parent.parent
+    subprocess.run(
+        [
+            "/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+            "LaunchServices.framework/Support/lsregister",
+            "-R", "-f", str(bundle_root),
+        ],
+        capture_output=True,
+    )
+
+    return bundle_root
