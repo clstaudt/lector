@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Read text aloud with high-quality neural TTS (Kokoro) — from clipboard, stdin, or argument."
 readme = "README.md"
 requires-python = ">=3.11"
-license = "MIT"
+license = "GPL-3.0-or-later"
 dependencies = [
     "kokoro-onnx>=0.4.0",
     "sounddevice>=0.5",
