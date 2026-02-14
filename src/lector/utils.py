@@ -46,7 +46,7 @@ _WORKFLOW_INFO_PLIST = """\
             <key>NSMenuItem</key>
             <dict>
                 <key>default</key>
-                <string>Lector: Read / Stop</string>
+                <string>Read with Lector · Stop Reading</string>
             </dict>
             <key>NSMessage</key>
             <string>runWorkflowAsService</string>
@@ -264,7 +264,7 @@ def install_macos_quick_action() -> Path:
     """Create and install a macOS Quick Action (Service) workflow.
 
     After installation the user can select text in any app, right-click,
-    and choose **Services → Lector: Read / Stop**.
+    and choose **Services → Read with Lector · Stop Reading**.
     Invoking it while Lector is already playing stops playback.
 
     Returns the path to the installed ``.workflow`` bundle.
@@ -273,13 +273,14 @@ def install_macos_quick_action() -> Path:
         Path.home()
         / "Library"
         / "Services"
-        / "Lector - Read or Stop.workflow"
+        / "Read with Lector.workflow"
         / "Contents"
     )
     workflow_dir.mkdir(parents=True, exist_ok=True)
 
-    # Remove legacy workflow bundle if present.
-    legacy = workflow_dir.parent.parent / "Read with Lector.workflow"
+    # Remove legacy workflow bundles if present.
+    for old_name in ("Lector - Read or Stop.workflow",):
+        legacy = workflow_dir.parent.parent / old_name
     if legacy.exists():
         shutil.rmtree(legacy)
 
@@ -325,7 +326,7 @@ def uninstall_macos_quick_action() -> Path | None:
         Path.home()
         / "Library"
         / "Services"
-        / "Lector - Read or Stop.workflow"
+        / "Read with Lector.workflow"
     )
     if not bundle_root.exists():
         return None

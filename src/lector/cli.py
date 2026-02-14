@@ -88,7 +88,7 @@ def download(
 
 @app.command(name="install-service")
 def install_service() -> None:
-    """[macOS] Install a Quick Action so "Lector: Read / Stop" appears in the right-click Services menu."""
+    """[macOS] Install a Quick Action so "Read with Lector · Stop Reading" appears in the right-click Services menu."""
     if platform.system() != "Darwin":
         console.print("[red]This command is only available on macOS.[/red]")
         raise typer.Exit(1)
@@ -96,7 +96,7 @@ def install_service() -> None:
     path = install_macos_quick_action()
     console.print("[green]✓ Quick Action installed![/green]")
     console.print(
-        "  Select text → right-click → [bold]Services → Lector: Read / Stop[/bold]"
+        "  Select text → right-click → [bold]Services → Read with Lector · Stop Reading[/bold]"
     )
     console.print(
         "  Invoke again while playing to stop playback."
