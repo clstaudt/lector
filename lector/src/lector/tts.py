@@ -6,7 +6,6 @@ import asyncio
 import urllib.request
 from pathlib import Path
 
-import sounddevice as sd
 from kokoro_onnx import Kokoro
 
 MODEL_DIR = Path.home() / ".lector" / "models"
@@ -103,29 +102,35 @@ def get_engine() -> Kokoro:
 # Playback
 # ---------------------------------------------------------------------------
 
-async def _speak_stream(
-    text: str,
-    voice: str = "af_heart",
-    speed: float = 1.0,
-    lang: str = "en-us",
-) -> None:
-    """Generate and play audio chunks as they become available.
-
-    Each chunk is played immediately so reading starts before the full
-    text has been synthesised — crucial for long passages.
-    """
-    engine = get_engine()
-    stream = engine.create_stream(text, voice=voice, speed=speed, lang=lang)
-    async for samples, sample_rate in stream:
-        sd.play(samples, sample_rate)
-        sd.wait()
-
-
 def speak(
     text: str,
     voice: str = "af_heart",
     speed: float = 1.0,
     lang: str = "en-us",
 ) -> None:
-    """Read *text* aloud, streaming chunks for immediate playback."""
-    asyncio.run(_speak_stream(text, voice=voice, speed=speed, lang=lang))
+    """Read *text* aloud with an interactive player UI.
+
+    Generation streams in the background while audio plays immediately.
+    Supports pause, seek, restart, and quit via keyboard controls.
+    """
+    from .player import AudioPlayer, play_with_ui
+
+    engine = get_engine()
+    player = AudioPlayer(sample_rate=24_000)
+
+    # Pre-compute the expected number of chunks so the UI can show a
+    # real progress bar.  Phonemisation + splitting is near-instant.
+    phonemes = engine.tokenizer.phonemize(text, lang)
+    batched = engine._split_phonemes(phonemes)
+    player.set_expected_chunks(len(batched))
+
+    def generate(p: AudioPlayer) -> None:
+        async def _stream() -> None:
+            stream = engine.create_stream(text, voice=voice, speed=speed, lang=lang)
+            async for samples, _sr in stream:
+                p.add_chunk(samples)
+            p.mark_generation_done()
+
+        asyncio.run(_stream())
+
+    play_with_ui(player, generate)
