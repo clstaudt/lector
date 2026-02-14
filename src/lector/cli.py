@@ -9,9 +9,10 @@ from typing import Optional
 import typer
 from rich.console import Console
 
+from .macos_service import install_quick_action, uninstall_quick_action
 from .tts import create_player, download_models, get_engine
 from .ui import run_player
-from .utils import install_macos_quick_action, read_clipboard, read_stdin, uninstall_macos_quick_action
+from .utils import read_clipboard, read_stdin
 
 app = typer.Typer(
     name="lector",
@@ -93,7 +94,7 @@ def install_service() -> None:
         console.print("[red]This command is only available on macOS.[/red]")
         raise typer.Exit(1)
 
-    path = install_macos_quick_action()
+    path = install_quick_action()
     console.print("[green]✓ Quick Action installed![/green]")
     console.print(
         "  Select text → right-click → [bold]Services → Read with Lector · Stop Reading[/bold]"
@@ -111,7 +112,7 @@ def uninstall_service() -> None:
         console.print("[red]This command is only available on macOS.[/red]")
         raise typer.Exit(1)
 
-    path = uninstall_macos_quick_action()
+    path = uninstall_quick_action()
     if path:
         console.print("[green]✓ Quick Action removed.[/green]")
         console.print(f"  [dim]Removed {path}[/dim]")
