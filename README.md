@@ -6,6 +6,10 @@ Lector wraps [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) in a
 simple CLI with an interactive player.  Audio is streamed chunk-by-chunk so
 reading starts immediately, even for long texts.
 
+<p align="center">
+  <img src="img/terminal-screenshot.png" alt="Lector player UI" width="700">
+</p>
+
 ## Prerequisites
 
 You need [uv](https://docs.astral.sh/uv/), a Python package manager.
