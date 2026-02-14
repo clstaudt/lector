@@ -1,0 +1,30 @@
+[project]
+name = "lector"
+version = "0.1.0"
+description = "Read text aloud with high-quality neural TTS (Kokoro) — from clipboard, stdin, or argument."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "kokoro-onnx>=0.4.0",
+    "sounddevice>=0.5",
+    "typer>=0.15",
+    "rich>=13",
+]
+
+[project.scripts]
+lector = "lector.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lector"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+src = ["src"]
