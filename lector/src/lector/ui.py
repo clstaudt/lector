@@ -139,37 +139,40 @@ def _build_display(player: AudioPlayer) -> Panel:
     time_label = f"{_fmt_time(current)} / {_fmt_time(total_dur)}"
     play_table.add_row("Playback", play_bar, time_label)
 
-    # -- status --
-    if player.is_finished:
-        status = Text("  ✓ Done", style="green")
-    elif player.is_paused:
-        status = Text("  ⏸  Paused", style="yellow")
-    elif player.playback_time >= player.buffered_duration and not player.generation_done:
-        status = Text("  ⏳ Buffering…", style="dim")
-    else:
-        status = Text("  ▶  Playing", style="blue")
-
-    # -- chunk indicator --
+    # -- status + chunk --
+    chunk_idx = player.current_chunk_index + 1
+    total = player.total_chunks
     ellipsis = "" if player.generation_done else "…"
-    chunk_info = Text(
-        f"  Sentence {player.current_chunk_index + 1} / "
-        f"{player.total_chunks}{ellipsis}",
-        style="dim",
-    )
 
-    # -- metadata --
+    if player.is_finished:
+        status = Text("✓ Done", style="green", justify="center")
+    elif player.is_paused:
+        status = Text(
+            f"⏸  Paused  ·  chunk {chunk_idx} / {total}{ellipsis}",
+            style="yellow", justify="center",
+        )
+    elif player.playback_time >= player.buffered_duration and not player.generation_done:
+        status = Text("⏳ Buffering…", style="dim", justify="center")
+    else:
+        status = Text(
+            f"▶  Playing  ·  chunk {chunk_idx} / {total}{ellipsis}",
+            style="blue", justify="center",
+        )
+
+    # -- metadata (centered) --
     meta = Text.assemble(
-        ("  voice ", "dim"),
+        ("voice ", "dim"),
         (player.voice, "bold cyan"),
-        ("  speed ", "dim"),
+        ("   speed ", "dim"),
         (f"{player.speed:.1f}×", "bold cyan"),
-        ("  lang ", "dim"),
+        ("   lang ", "dim"),
         (player.lang, "bold cyan"),
     )
+    meta.justify = "center"
 
-    # -- key hints --
+    # -- key hints (gray box) --
     keys = Text.assemble(
-        ("  ␣", "bold"), " pause  ",
+        ("␣", "bold"), " pause  ",
         ("q", "bold"), " quit  ",
         ("r", "bold"), " restart  ",
         ("← h", "bold"), " prev  ",
@@ -177,10 +180,11 @@ def _build_display(player: AudioPlayer) -> Panel:
         ("+", "bold"), " faster  ",
         ("-", "bold"), " slower",
     )
-    keys.stylize("dim")
+    keys.justify = "center"
+    keys_panel = Panel(keys, border_style="bright_black", padding=(0, 1))
 
     return Panel(
-        Group(gen_table, play_table, status, chunk_info, meta, Text(""), keys),
+        Group(gen_table, play_table, status, meta, Text(""), keys_panel),
         title="[bold]Lector[/bold]",
         border_style="blue",
         padding=(0, 1),
