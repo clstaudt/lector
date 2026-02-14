@@ -278,6 +278,11 @@ def install_macos_quick_action() -> Path:
     )
     workflow_dir.mkdir(parents=True, exist_ok=True)
 
+    # Remove legacy workflow bundle if present.
+    legacy = workflow_dir.parent.parent / "Read with Lector.workflow"
+    if legacy.exists():
+        shutil.rmtree(legacy)
+
     # Write Info.plist — required for macOS to register the service.
     info_plist_path = workflow_dir / "Info.plist"
     info_plist_path.write_text(_WORKFLOW_INFO_PLIST, encoding="utf-8")
