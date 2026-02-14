@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import atexit
 import os
+import signal
 import select
 import sys
 import termios
 import time
 import tty
+from pathlib import Path
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -17,6 +20,35 @@ from rich.table import Table
 from rich.text import Text
 
 from .player import AudioPlayer
+
+_PID_FILE = Path.home() / ".lector" / "lector.pid"
+
+
+# ---------------------------------------------------------------------------
+# PID file — allows a second invocation to stop a running instance
+# ---------------------------------------------------------------------------
+
+
+def _kill_existing() -> bool:
+    """If another lector process is playing, kill it and return True."""
+    try:
+        pid = int(_PID_FILE.read_text().strip())
+    except (FileNotFoundError, ValueError):
+        return False
+    try:
+        os.kill(pid, signal.SIGTERM)
+        _PID_FILE.unlink(missing_ok=True)
+        return True
+    except ProcessLookupError:
+        _PID_FILE.unlink(missing_ok=True)
+        return False
+
+
+def _write_pid() -> None:
+    """Write current PID so a future invocation can stop us."""
+    _PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _PID_FILE.write_text(str(os.getpid()))
+    atexit.register(lambda: _PID_FILE.unlink(missing_ok=True))
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +255,14 @@ def _run_headless(player: AudioPlayer) -> None:
 
     Used when lector is invoked from Automator, a pipe, or any
     context without a controlling terminal.
+
+    Toggle behaviour: if another lector process is already playing,
+    stop it and exit instead of starting a new one.
     """
+    if _kill_existing():
+        return
+
+    _write_pid()
     player.start_generation()
 
     deadline = time.monotonic() + 10.0

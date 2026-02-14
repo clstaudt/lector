@@ -11,7 +11,7 @@ from rich.console import Console
 
 from .tts import create_player, download_models, get_engine
 from .ui import run_player
-from .utils import install_macos_quick_action, read_clipboard, read_stdin
+from .utils import install_macos_quick_action, read_clipboard, read_stdin, uninstall_macos_quick_action
 
 app = typer.Typer(
     name="lector",
@@ -88,7 +88,7 @@ def download(
 
 @app.command(name="install-service")
 def install_service() -> None:
-    """[macOS] Install a Quick Action so "Read with Lector" appears in the right-click Services menu."""
+    """[macOS] Install a Quick Action so "Lector: Read / Stop" appears in the right-click Services menu."""
     if platform.system() != "Darwin":
         console.print("[red]This command is only available on macOS.[/red]")
         raise typer.Exit(1)
@@ -96,9 +96,24 @@ def install_service() -> None:
     path = install_macos_quick_action()
     console.print("[green]✓ Quick Action installed![/green]")
     console.print(
-        "  Select text → right-click → [bold]Services → Read with Lector[/bold]"
+        "  Select text → right-click → [bold]Services → Lector: Read / Stop[/bold]"
     )
     console.print(
-        "  (You may need to enable it in System Settings → Keyboard → Keyboard Shortcuts → Services.)"
+        "  Invoke again while playing to stop playback."
     )
     console.print(f"  [dim]Installed to {path}[/dim]")
+
+
+@app.command(name="uninstall-service")
+def uninstall_service() -> None:
+    """[macOS] Remove the Lector Quick Action from the Services menu."""
+    if platform.system() != "Darwin":
+        console.print("[red]This command is only available on macOS.[/red]")
+        raise typer.Exit(1)
+
+    path = uninstall_macos_quick_action()
+    if path:
+        console.print("[green]✓ Quick Action removed.[/green]")
+        console.print(f"  [dim]Removed {path}[/dim]")
+    else:
+        console.print("[yellow]Quick Action was not installed.[/yellow]")
