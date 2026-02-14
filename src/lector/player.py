@@ -68,6 +68,8 @@ class AudioPlayer:
         self._generation_done = False
         self._gen_epoch: int = 0
         self._gen_wakeup = threading.Event()
+        self._worker_thread: threading.Thread | None = None
+        self._generation_error: str | None = None
 
         self._stream: sd.OutputStream | None = None
 
@@ -76,37 +78,42 @@ class AudioPlayer:
     def start_generation(self) -> None:
         """Start the background generation worker thread."""
         t = threading.Thread(target=self._generation_worker, daemon=True)
+        self._worker_thread = t
         t.start()
 
     def _generation_worker(self) -> None:
-        while not self._stopped:
-            current = self.current_chunk_index
-            cursor = self._gen_cursor
+        try:
+            while not self._stopped:
+                current = self.current_chunk_index
+                cursor = self._gen_cursor
 
-            if cursor >= self._expected_chunks:
-                self._generation_done = True
-                break
+                if cursor >= self._expected_chunks:
+                    self._generation_done = True
+                    break
 
-            if cursor - current >= self.LOOK_AHEAD:
-                self._gen_wakeup.wait(timeout=0.3)
-                self._gen_wakeup.clear()
-                continue
-
-            epoch = self._gen_epoch
-            batch = self._phoneme_batches[cursor]
-            audio, _ = self._engine._create_audio(
-                batch, self._voice_style, self.speed,
-            )
-
-            with self._lock:
-                if epoch != self._gen_epoch:
+                if cursor - current >= self.LOOK_AHEAD:
+                    self._gen_wakeup.wait(timeout=0.3)
+                    self._gen_wakeup.clear()
                     continue
-                self._chunk_starts.append(len(self._buffer))
-                self._buffer = np.concatenate([self._buffer, audio])
-                self._chunks_received += 1
-                self._gen_cursor += 1
 
-        if not self._stopped:
+                epoch = self._gen_epoch
+                batch = self._phoneme_batches[cursor]
+                audio, _ = self._engine._create_audio(
+                    batch, self._voice_style, self.speed,
+                )
+
+                with self._lock:
+                    if epoch != self._gen_epoch:
+                        continue
+                    self._chunk_starts.append(len(self._buffer))
+                    self._buffer = np.concatenate([self._buffer, audio])
+                    self._chunks_received += 1
+                    self._gen_cursor += 1
+
+            if not self._stopped:
+                self._generation_done = True
+        except Exception as exc:  # noqa: BLE001
+            self._generation_error = str(exc)
             self._generation_done = True
 
     # -- transport controls -------------------------------------------------
@@ -231,6 +238,11 @@ class AudioPlayer:
         return self._generation_done
 
     @property
+    def generation_error(self) -> str | None:
+        """Non-*None* when the generation worker died with an error."""
+        return self._generation_error
+
+    @property
     def current_chunk_index(self) -> int:
         """0-based index of the chunk currently playing."""
         with self._lock:
@@ -259,14 +271,23 @@ class AudioPlayer:
             outdata[:] = 0
             return
 
+        wake_gen = False
         with self._lock:
             available = len(self._buffer)
             if self._play_pos >= available:
                 outdata[:] = 0
-                return
+                wake_gen = not self._generation_done
+            else:
+                to_read = min(frames, available - self._play_pos)
+                outdata[:to_read, 0] = self._buffer[
+                    self._play_pos : self._play_pos + to_read
+                ]
+                if to_read < frames:
+                    outdata[to_read:] = 0
+                self._play_pos += to_read
+                # Wake worker when less than ~1 s of audio remains
+                if available - self._play_pos < self.sample_rate:
+                    wake_gen = not self._generation_done
 
-            to_read = min(frames, available - self._play_pos)
-            outdata[:to_read, 0] = self._buffer[self._play_pos : self._play_pos + to_read]
-            if to_read < frames:
-                outdata[to_read:] = 0
-            self._play_pos += to_read
+        if wake_gen:
+            self._gen_wakeup.set()

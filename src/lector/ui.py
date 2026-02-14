@@ -132,7 +132,10 @@ def _build_display(player: AudioPlayer) -> Panel:
     expected = player.expected_chunks
     received = player.chunks_received
 
-    if player.generation_done:
+    if player.generation_error:
+        gen_bar = ProgressBar(total=100, completed=(received / expected * 100) if expected else 0, complete_style="red")
+        gen_label = f"[red]✗[/red] {received} / {expected} chunks"
+    elif player.generation_done:
         gen_bar = ProgressBar(total=100, completed=100, complete_style="green")
         gen_label = f"[green]✓[/green] {received} chunks"
     elif expected > 0:
@@ -176,7 +179,12 @@ def _build_display(player: AudioPlayer) -> Panel:
     total = player.total_chunks
     ellipsis = "" if player.generation_done else "…"
 
-    if player.is_finished:
+    if player.is_finished and player.generation_error:
+        status = Text(
+            f"✗ Finished ({received}/{expected} chunks — generation error)",
+            style="red", justify="center",
+        )
+    elif player.is_finished:
         status = Text("✓ Done", style="green", justify="center")
     elif player.is_paused:
         status = Text(
