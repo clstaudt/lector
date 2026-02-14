@@ -2,6 +2,9 @@
 
 **Read text aloud with high-quality neural TTS — from clipboard, stdin, or argument.**
 
+> [!WARNING]
+> Lector is in early development. Expect rough edges, breaking changes, and missing features.
+
 Lector wraps [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) in a
 simple CLI with an interactive player.  Audio is streamed chunk-by-chunk so
 reading starts immediately, even for long texts.
