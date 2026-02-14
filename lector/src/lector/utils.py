@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 
 # ---------------------------------------------------------------------------
@@ -240,9 +242,6 @@ def install_macos_quick_action() -> Path:
 
     Returns the path to the installed ``.workflow`` bundle.
     """
-    import shutil
-    from xml.sax.saxutils import escape as xml_escape
-
     workflow_dir = (
         Path.home()
         / "Library"

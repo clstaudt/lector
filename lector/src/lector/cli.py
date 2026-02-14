@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import platform
 import sys
 from typing import Optional
 
 import typer
 from rich.console import Console
+
+from .tts import create_player, download_models, get_engine
+from .ui import run_player
+from .utils import install_macos_quick_action, read_clipboard, read_stdin
 
 app = typer.Typer(
     name="lector",
@@ -24,7 +29,7 @@ def read(
         False, "--clipboard", "-c", help="Read text from the system clipboard (pbpaste)."
     ),
     voice: str = typer.Option(
-        "af_heart", "--voice", "-v", help="Voice name (run 'lector voices' to list)."
+        "af_sky", "--voice", "-v", help="Voice name (run 'lector voices' to list)."
     ),
     speed: float = typer.Option(1.0, "--speed", "-s", help="Speech speed (0.5–2.0)."),
     lang: str = typer.Option("en-us", "--lang", "-l", help="Language code."),
@@ -41,11 +46,8 @@ def read(
         lector read --clipboard
         cat article.txt | lector read --voice af_nicole --speed 0.9
     """
-    from .tts import speak
-    from .utils import read_clipboard as _clipboard, read_stdin
-
     if clipboard:
-        text = _clipboard()
+        text = read_clipboard()
     elif text is None:
         if not sys.stdin.isatty():
             text = read_stdin()
@@ -60,16 +62,14 @@ def read(
         console.print("[yellow]Nothing to read (empty text).[/yellow]")
         raise typer.Exit()
 
-    console.print(f"[dim]voice={voice}  speed={speed}  lang={lang}[/dim]")
-    speak(text.strip(), voice=voice, speed=speed, lang=lang)
+    player = create_player(text.strip(), voice=voice, speed=speed, lang=lang)
+    run_player(player)
 
 
 @app.command()
 def voices() -> None:
     """List available TTS voices."""
-    from .tts import get_engine
-
-    out = Console()  # stdout, not stderr
+    out = Console()
     engine = get_engine()
     for v in sorted(engine.get_voices()):
         out.print(v)
@@ -82,8 +82,6 @@ def download(
     ),
 ) -> None:
     """Download the Kokoro TTS model files (~300 MB)."""
-    from .tts import download_models
-
     download_models(force=force)
     console.print("[green]✓ Models ready.[/green]")
 
@@ -91,13 +89,9 @@ def download(
 @app.command(name="install-service")
 def install_service() -> None:
     """[macOS] Install a Quick Action so "Read with Lector" appears in the right-click Services menu."""
-    import platform
-
     if platform.system() != "Darwin":
         console.print("[red]This command is only available on macOS.[/red]")
         raise typer.Exit(1)
-
-    from .utils import install_macos_quick_action
 
     path = install_macos_quick_action()
     console.print("[green]✓ Quick Action installed![/green]")

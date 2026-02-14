@@ -1,86 +1,118 @@
-"""Interactive audio player with Rich UI and keyboard controls."""
+"""Audio player — buffer management, sounddevice playback, on-demand TTS generation."""
 
 from __future__ import annotations
 
-import os
-import select
-import sys
-import termios
 import threading
-import tty
 from typing import TYPE_CHECKING
 
 import numpy as np
 import sounddevice as sd
-from rich.console import Console, Group
-from rich.live import Live
-from rich.panel import Panel
-from rich.progress_bar import ProgressBar
-from rich.table import Table
-from rich.text import Text
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
-
-# ---------------------------------------------------------------------------
-# Audio player (callback-driven, seekable)
-# ---------------------------------------------------------------------------
+    from kokoro_onnx import Kokoro
 
 
 class AudioPlayer:
-    """Manages a growing audio buffer with real-time playback.
+    """Manages audio buffer, on-demand TTS generation, and playback.
 
-    Chunks are appended while a ``sounddevice.OutputStream`` callback
-    continuously reads from the buffer.  Supports pause, seek, and
-    sentence-level navigation.
+    A background worker generates chunks just ahead of the playback
+    cursor (look-ahead).  When speed changes the worker discards
+    pre-generated audio after the current chunk and re-generates at the
+    new speed.
     """
 
-    def __init__(self, sample_rate: int = 24000) -> None:
+    SPEED_STEP = 0.1
+    SPEED_MIN = 0.5
+    SPEED_MAX = 2.0
+    LOOK_AHEAD = 3
+
+    def __init__(
+        self,
+        sample_rate: int = 24000,
+        voice: str = "",
+        speed: float = 1.0,
+        lang: str = "",
+        *,
+        engine: Kokoro | None = None,
+        voice_style: np.ndarray | None = None,
+        phoneme_batches: list[str] | None = None,
+    ) -> None:
         self.sample_rate = sample_rate
 
-        # Audio buffer (grows as chunks arrive)
+        # Metadata (for display)
+        self.voice = voice
+        self.speed = speed
+        self.lang = lang
+
+        # Generation resources
+        self._engine = engine
+        self._voice_style = voice_style
+        self._phoneme_batches: list[str] = phoneme_batches or []
+        self._expected_chunks: int = len(self._phoneme_batches)
+
+        # Audio buffer (grows as chunks arrive, kept in memory only)
         self._buffer = np.empty(0, dtype=np.float32)
         self._lock = threading.Lock()
 
-        # Chunk boundary tracking — each entry is the sample offset where
-        # that chunk *starts* in the buffer.  Used for sentence navigation.
+        # Chunk boundary tracking — sample offset where each chunk starts.
         self._chunk_starts: list[int] = []
 
         # Playback state
-        self._play_pos: int = 0  # current sample index
+        self._play_pos: int = 0
         self._paused = False
         self._stopped = False
 
-        # Generation bookkeeping
+        # Generation state
+        self._gen_cursor: int = 0
         self._chunks_received: int = 0
-        self._expected_chunks: int | None = None
         self._generation_done = False
+        self._gen_epoch: int = 0
+        self._gen_wakeup = threading.Event()
 
         self._stream: sd.OutputStream | None = None
 
-    # -- chunk ingestion ----------------------------------------------------
+    # -- generation ---------------------------------------------------------
 
-    def add_chunk(self, samples: np.ndarray) -> None:
-        with self._lock:
-            self._chunk_starts.append(len(self._buffer))
-            self._buffer = np.concatenate([self._buffer, samples])
-            self._chunks_received += 1
+    def start_generation(self) -> None:
+        """Start the background generation worker thread."""
+        t = threading.Thread(target=self._generation_worker, daemon=True)
+        t.start()
 
-    def mark_generation_done(self) -> None:
-        self._generation_done = True
+    def _generation_worker(self) -> None:
+        while not self._stopped:
+            current = self.current_chunk_index
+            cursor = self._gen_cursor
 
-    def set_expected_chunks(self, n: int) -> None:
-        """Set the expected total number of chunks (for progress display)."""
-        self._expected_chunks = n
+            if cursor >= self._expected_chunks:
+                self._generation_done = True
+                break
 
-    @property
-    def expected_chunks(self) -> int | None:
-        return self._expected_chunks
+            if cursor - current >= self.LOOK_AHEAD:
+                self._gen_wakeup.wait(timeout=0.3)
+                self._gen_wakeup.clear()
+                continue
+
+            epoch = self._gen_epoch
+            batch = self._phoneme_batches[cursor]
+            audio, _ = self._engine._create_audio(
+                batch, self._voice_style, self.speed,
+            )
+
+            with self._lock:
+                if epoch != self._gen_epoch:
+                    continue
+                self._chunk_starts.append(len(self._buffer))
+                self._buffer = np.concatenate([self._buffer, audio])
+                self._chunks_received += 1
+                self._gen_cursor += 1
+
+        if not self._stopped:
+            self._generation_done = True
 
     # -- transport controls -------------------------------------------------
 
     def start(self) -> None:
+        """Open the audio output stream and begin playback."""
         self._stream = sd.OutputStream(
             samplerate=self.sample_rate,
             channels=1,
@@ -91,7 +123,9 @@ class AudioPlayer:
         self._stream.start()
 
     def stop(self) -> None:
+        """Stop playback and generation."""
         self._stopped = True
+        self._gen_wakeup.set()
         if self._stream is not None:
             self._stream.stop()
             self._stream.close()
@@ -106,16 +140,13 @@ class AudioPlayer:
             for start in self._chunk_starts:
                 if start > self._play_pos:
                     self._play_pos = start
-                    return
-            # Already past the last chunk start — jump to end
-            self._play_pos = len(self._buffer)
+                    break
+            else:
+                self._play_pos = len(self._buffer)
+        self._gen_wakeup.set()
 
     def prev_chunk(self) -> None:
-        """Jump to the start of the current or previous sentence chunk.
-
-        If we're within the first 0.5 s of the current chunk, jump to the
-        *previous* one.  Otherwise restart the current chunk.
-        """
+        """Jump back to current or previous sentence chunk."""
         with self._lock:
             grace = int(0.5 * self.sample_rate)
             for start in reversed(self._chunk_starts):
@@ -125,9 +156,45 @@ class AudioPlayer:
             self._play_pos = 0
 
     def restart(self) -> None:
+        """Restart playback from the beginning."""
         with self._lock:
             self._play_pos = 0
             self._paused = False
+
+    def speed_up(self) -> None:
+        old = self.speed
+        self.speed = round(min(self.speed + self.SPEED_STEP, self.SPEED_MAX), 1)
+        if self.speed != old:
+            self._invalidate_future_chunks()
+
+    def speed_down(self) -> None:
+        old = self.speed
+        self.speed = round(max(self.speed - self.SPEED_STEP, self.SPEED_MIN), 1)
+        if self.speed != old:
+            self._invalidate_future_chunks()
+
+    def _invalidate_future_chunks(self) -> None:
+        """Discard generated audio after the current chunk and re-generate."""
+        with self._lock:
+            current_idx = 0
+            for i, start in enumerate(self._chunk_starts):
+                if start <= self._play_pos:
+                    current_idx = i
+                else:
+                    break
+            keep = current_idx + 1
+
+            if keep < len(self._chunk_starts):
+                trunc_at = self._chunk_starts[keep]
+                self._buffer = self._buffer[:trunc_at]
+                self._chunk_starts = self._chunk_starts[:keep]
+                self._chunks_received = keep
+                self._gen_cursor = keep
+                self._generation_done = False
+
+            self._gen_epoch += 1
+
+        self._gen_wakeup.set()
 
     # -- queries ------------------------------------------------------------
 
@@ -154,6 +221,10 @@ class AudioPlayer:
     @property
     def chunks_received(self) -> int:
         return self._chunks_received
+
+    @property
+    def expected_chunks(self) -> int:
+        return self._expected_chunks
 
     @property
     def generation_done(self) -> bool:
@@ -199,219 +270,3 @@ class AudioPlayer:
             if to_read < frames:
                 outdata[to_read:] = 0
             self._play_pos += to_read
-
-
-# ---------------------------------------------------------------------------
-# Non-blocking key reader (macOS / Linux)
-# ---------------------------------------------------------------------------
-
-
-class _CbreakTerminal:
-    """Context manager: cbreak mode for single-key reads.
-
-    Unlike raw mode, cbreak preserves output processing so Rich's
-    cursor-movement escapes work correctly (no stacking panels).
-    """
-
-    def __init__(self) -> None:
-        self._fd = sys.stdin.fileno()
-        self._old: list | None = None
-
-    def __enter__(self) -> _CbreakTerminal:
-        self._old = termios.tcgetattr(self._fd)
-        tty.setcbreak(self._fd)
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        if self._old is not None:
-            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._old)
-
-
-def _read_key(timeout: float = 0.05) -> str | None:
-    """Read a single keypress (non-blocking).
-
-    Uses ``os.read`` on the raw file descriptor to avoid Python's
-    internal IO buffer swallowing escape-sequence bytes.
-    """
-    fd = sys.stdin.fileno()
-    rlist, _, _ = select.select([fd], [], [], timeout)
-    if not rlist:
-        return None
-
-    ch = os.read(fd, 1)
-    if not ch:
-        return None
-
-    if ch == b"\x1b":
-        # Possible escape sequence — remaining bytes arrive together
-        rlist2, _, _ = select.select([fd], [], [], 0.05)
-        if rlist2:
-            ch2 = os.read(fd, 1)
-            if ch2 == b"[":
-                ch3 = os.read(fd, 1)
-                return {
-                    b"C": "right", b"D": "left",
-                    b"A": "up", b"B": "down",
-                }.get(ch3)
-        # Bare Escape key (ignored — use 'q' to quit)
-        return None
-
-    if ch == b" ":
-        return "space"
-    if ch in (b"\x03", b"\x04"):  # Ctrl-C / Ctrl-D
-        return "quit"
-    return ch.decode("utf-8", errors="ignore")
-
-
-# ---------------------------------------------------------------------------
-# Rich UI
-# ---------------------------------------------------------------------------
-
-
-def _fmt_time(seconds: float) -> str:
-    m, s = divmod(int(seconds), 60)
-    return f"{m}:{s:02d}"
-
-
-def _build_display(player: AudioPlayer) -> Panel:
-    """Return a Rich renderable snapshot of the current player state."""
-    # -- generation row --
-    gen_table = Table.grid(padding=(0, 1))
-    gen_table.add_column(width=13)
-    gen_table.add_column(ratio=1)
-    gen_table.add_column(width=20, justify="right")
-
-    expected = player.expected_chunks
-    received = player.chunks_received
-
-    if player.generation_done:
-        gen_bar = ProgressBar(total=100, completed=100, complete_style="green")
-        gen_label = f"[green]✓[/green] {received} chunks"
-    elif expected is not None and expected > 0:
-        pct_gen = received / expected * 100
-        gen_bar = ProgressBar(total=100, completed=min(pct_gen, 100), complete_style="magenta")
-        gen_label = f"{received} / {expected} chunks"
-    else:
-        import time
-        pulse = (int(time.time() * 4) % 40) + 30
-        gen_bar = ProgressBar(total=100, completed=pulse, pulse=True)
-        gen_label = f"{received} chunks…"
-
-    gen_table.add_row("Generating", gen_bar, gen_label)
-
-    # -- playback row --
-    play_table = Table.grid(padding=(0, 1))
-    play_table.add_column(width=13)
-    play_table.add_column(ratio=1)
-    play_table.add_column(width=20, justify="right")
-
-    total_dur = player.buffered_duration
-    current = player.playback_time
-    pct = (current / total_dur * 100) if total_dur > 0 else 0
-
-    if player.is_paused:
-        bar_style = "yellow"
-    elif player.is_finished:
-        bar_style = "green"
-    else:
-        bar_style = "blue"
-
-    play_bar = ProgressBar(total=100, completed=min(pct, 100), complete_style=bar_style)
-    time_label = f"{_fmt_time(current)} / {_fmt_time(total_dur)}"
-    play_table.add_row("Playback", play_bar, time_label)
-
-    # -- status --
-    if player.is_finished:
-        status = Text("  ✓ Done", style="green")
-    elif player.is_paused:
-        status = Text("  ⏸  Paused", style="yellow")
-    elif player.playback_time >= player.buffered_duration and not player.generation_done:
-        status = Text("  ⏳ Buffering…", style="dim")
-    else:
-        status = Text("  ▶  Playing", style="blue")
-
-    # -- chunk indicator --
-    ellipsis = "" if player.generation_done else "…"
-    chunk_info = Text(
-        f"  Sentence {player.current_chunk_index + 1} / "
-        f"{player.total_chunks}{ellipsis}",
-        style="dim",
-    )
-
-    # -- key hints --
-    keys = Text.assemble(
-        ("  ␣", "bold"), " pause  ",
-        ("q", "bold"), " quit  ",
-        ("r", "bold"), " restart  ",
-        ("← h", "bold"), " prev  ",
-        ("→ l", "bold"), " next",
-    )
-    keys.stylize("dim")
-
-    return Panel(
-        Group(gen_table, play_table, status, chunk_info, Text(""), keys),
-        title="[bold]Lector[/bold]",
-        border_style="blue",
-        padding=(0, 1),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Public entry point
-# ---------------------------------------------------------------------------
-
-
-def play_with_ui(
-    player: AudioPlayer,
-    generate_fn: Callable[[AudioPlayer], None],
-) -> None:
-    """Run the interactive player UI.
-
-    *generate_fn* is called in a background thread.  It should call
-    ``player.add_chunk()`` for each audio chunk and
-    ``player.mark_generation_done()`` when finished.
-    """
-    # Start generation in background
-    gen_thread = threading.Thread(target=generate_fn, args=(player,), daemon=True)
-    gen_thread.start()
-
-    # Wait briefly for the first chunk so we have *something* to play
-    gen_thread.join(timeout=3.0)
-
-    player.start()
-    console = Console(stderr=True)
-
-    try:
-        with _CbreakTerminal():
-            with Live(
-                _build_display(player),
-                console=console,
-                refresh_per_second=10,
-                transient=True,
-            ) as live:
-                while True:
-                    key = _read_key(timeout=0.08)
-
-                    if key == "space":
-                        player.toggle_pause()
-                    elif key in ("q", "quit"):
-                        player.stop()
-                        break
-                    elif key == "r":
-                        player.restart()
-                    elif key in ("right", "l"):
-                        player.next_chunk()
-                    elif key in ("left", "h"):
-                        player.prev_chunk()
-
-                    live.update(_build_display(player))
-
-                    if player.is_finished:
-                        live.update(_build_display(player))
-                        import time
-                        time.sleep(0.5)
-                        break
-    except KeyboardInterrupt:
-        pass
-    finally:
-        player.stop()

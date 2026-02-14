@@ -1,12 +1,14 @@
-"""TTS engine — Kokoro-ONNX with streaming playback."""
+"""TTS engine — Kokoro-ONNX wrapper and model management."""
 
 from __future__ import annotations
 
-import asyncio
 import urllib.request
 from pathlib import Path
 
 from kokoro_onnx import Kokoro
+from rich.progress import BarColumn, DownloadColumn, Progress, TransferSpeedColumn
+
+from .player import AudioPlayer
 
 MODEL_DIR = Path.home() / ".lector" / "models"
 
@@ -26,6 +28,7 @@ MODELS = {
 # Model management
 # ---------------------------------------------------------------------------
 
+
 def get_model_paths() -> tuple[Path, Path]:
     """Return ``(model_path, voices_path)``."""
     return MODEL_DIR / "kokoro-v1.0.onnx", MODEL_DIR / "voices-v1.0.bin"
@@ -33,13 +36,6 @@ def get_model_paths() -> tuple[Path, Path]:
 
 def download_models(force: bool = False) -> None:
     """Download model and voice files with a Rich progress bar."""
-    from rich.progress import (
-        BarColumn,
-        DownloadColumn,
-        Progress,
-        TransferSpeedColumn,
-    )
-
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     with Progress(
@@ -99,38 +95,31 @@ def get_engine() -> Kokoro:
 
 
 # ---------------------------------------------------------------------------
-# Playback
+# Player factory
 # ---------------------------------------------------------------------------
 
-def speak(
+
+def create_player(
     text: str,
-    voice: str = "af_heart",
+    voice: str = "af_sky",
     speed: float = 1.0,
     lang: str = "en-us",
-) -> None:
-    """Read *text* aloud with an interactive player UI.
+) -> AudioPlayer:
+    """Prepare an :class:`AudioPlayer` for the given text.
 
-    Generation streams in the background while audio plays immediately.
-    Supports pause, seek, restart, and quit via keyboard controls.
+    Pre-computes phoneme batches so the player can generate audio on
+    demand with a known total chunk count.
     """
-    from .player import AudioPlayer, play_with_ui
-
     engine = get_engine()
-    player = AudioPlayer(sample_rate=24_000)
-
-    # Pre-compute the expected number of chunks so the UI can show a
-    # real progress bar.  Phonemisation + splitting is near-instant.
     phonemes = engine.tokenizer.phonemize(text, lang)
     batched = engine._split_phonemes(phonemes)
-    player.set_expected_chunks(len(batched))
-
-    def generate(p: AudioPlayer) -> None:
-        async def _stream() -> None:
-            stream = engine.create_stream(text, voice=voice, speed=speed, lang=lang)
-            async for samples, _sr in stream:
-                p.add_chunk(samples)
-            p.mark_generation_done()
-
-        asyncio.run(_stream())
-
-    play_with_ui(player, generate)
+    voice_style = engine.get_voice_style(voice)
+    return AudioPlayer(
+        sample_rate=24_000,
+        voice=voice,
+        speed=speed,
+        lang=lang,
+        engine=engine,
+        voice_style=voice_style,
+        phoneme_batches=batched,
+    )

@@ -28,3 +28,8 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py311"
 src = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
