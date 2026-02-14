@@ -68,8 +68,6 @@ Follow these conventions in **all** code — source and tests:
 - Tests live in `tests/` and mirror the source module names (`test_player.py`
   tests `player.py`).
 - Shared fixtures go in `tests/conftest.py`.
-- The only large fake is `FakeKokoroEngine` (avoids ~300 MB model download).
-  Everything else (buffers, threading, transport controls) runs as real code.
 - Hardware boundaries (sounddevice, filesystem, subprocess) are mocked at the
   narrowest possible point.
 - Run the full suite before committing: `uv run pytest tests/ -v`.
