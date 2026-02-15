@@ -357,11 +357,12 @@ def _run_interactive(player: AudioPlayer) -> None:
 def run_player(player: AudioPlayer) -> None:
     """Run the player, choosing interactive or headless mode automatically.
 
-    Interactive mode (Rich UI + keyboard controls) is used when stderr
-    is a TTY.  Otherwise falls back to headless playback — suitable for
-    Automator Quick Actions, cron jobs, or piped contexts.
+    Interactive mode (Rich UI + keyboard controls) is used when **both**
+    stdin and stderr are TTYs.  When stdin is a pipe (e.g.
+    ``pbpaste | lector read``), cbreak mode cannot be set and keyboard
+    input is unavailable, so we fall back to headless playback.
     """
-    if sys.stderr.isatty():
+    if sys.stdin.isatty() and sys.stderr.isatty():
         _run_interactive(player)
     else:
         _run_headless(player)
