@@ -43,6 +43,16 @@ sudo apt install libportaudio2 portaudio19-dev
 
 On macOS, PortAudio is bundled with the sounddevice wheel — no extra step needed.
 
+### Linux: Clipboard
+
+For `lector read --clipboard` to work on Linux, install one of:
+
+```bash
+sudo apt install xclip          # X11
+sudo apt install xsel           # X11 (alternative)
+sudo apt install wl-clipboard   # Wayland
+```
+
 ## Install
 
 ```bash
