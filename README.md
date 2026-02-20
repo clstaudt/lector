@@ -32,6 +32,17 @@ brew install uv
 
 Close and reopen Terminal so the `uv` command is available.
 
+### Linux: PortAudio
+
+Lector uses [sounddevice](https://python-sounddevice.readthedocs.io/) for audio
+playback, which requires the PortAudio library.  On Debian / Ubuntu:
+
+```bash
+sudo apt install libportaudio2 portaudio19-dev
+```
+
+On macOS, PortAudio is bundled with the sounddevice wheel — no extra step needed.
+
 ## Install
 
 ```bash
