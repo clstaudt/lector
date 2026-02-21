@@ -20,10 +20,38 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
+from .config import save_config
+
 if TYPE_CHECKING:
     from .player import AudioPlayer
 
 _PID_FILE = Path.home() / ".lector" / "lector.pid"
+
+_FLASH_DURATION = 2.0  # seconds a flash message stays visible
+
+# Flash message state — module-level so _build_display can read it.
+_flash_message: str | None = None
+_flash_style: str = "dim"
+_flash_time: float = 0.0
+
+
+def _set_flash(message: str, style: str = "dim") -> None:
+    """Set a transient message displayed in the player panel."""
+    global _flash_message, _flash_style, _flash_time  # noqa: PLW0603
+    _flash_message = message
+    _flash_style = style
+    _flash_time = time.monotonic()
+
+
+def _get_flash() -> tuple[str, str] | None:
+    """Return the current flash *(message, style)* or *None* if expired."""
+    global _flash_message  # noqa: PLW0603
+    if _flash_message is None:
+        return None
+    if time.monotonic() - _flash_time > _FLASH_DURATION:
+        _flash_message = None
+        return None
+    return _flash_message, _flash_style
 
 
 # ---------------------------------------------------------------------------
@@ -244,10 +272,27 @@ def _build_display(player: AudioPlayer) -> Panel:
         " slower",
     )
     keys.justify = "center"
+
     keys_panel = Panel(keys, border_style="bright_black", padding=(0, 1))
 
+    save_hint = Text.assemble(
+        ("s", "bold"),
+        " save as default",
+    )
+    save_hint.justify = "center"
+
+    # -- optional flash message --
+    flash = _get_flash()
+    if flash:
+        flash_text = Text(flash[0], style=flash[1], justify="center")
+        body = Group(
+            gen_table, play_table, status, meta, flash_text, Text(""), keys_panel, save_hint
+        )
+    else:
+        body = Group(gen_table, play_table, status, meta, Text(""), keys_panel, save_hint)
+
     return Panel(
-        Group(gen_table, play_table, status, meta, Text(""), keys_panel),
+        body,
         title="[bold]Lector[/bold]",
         border_style="blue",
         padding=(0, 1),
@@ -273,6 +318,7 @@ _KEY_ACTIONS: dict[str, str] = {
     "-": "speed_down",
     "_": "speed_down",
     "down": "speed_down",
+    "s": "save_defaults",
 }
 
 
@@ -311,6 +357,28 @@ def _run_headless(player: AudioPlayer) -> None:
         player.stop()
 
 
+def _handle_save_defaults(player: AudioPlayer, live: Live) -> None:
+    """Prompt for confirmation, then persist current voice and speed."""
+    _set_flash("Save current voice & speed as default? (y/n)", "bold yellow")
+    live.update(_build_display(player))
+
+    # Wait for y/n answer — playback continues on its own threads.
+    while True:
+        key = _read_key(timeout=0.08)
+        if key == "y":
+            try:
+                save_config(voice=player.voice, speed=player.speed)
+                _set_flash("\u2713 Saved as default", "bold green")
+            except ValueError:
+                _set_flash("\u2717 Could not save", "bold red")
+            break
+        if key is not None:
+            _set_flash("Cancelled", "dim")
+            break
+        # Keep display alive while waiting
+        live.update(_build_display(player))
+
+
 def _run_interactive(player: AudioPlayer) -> None:
     """Run the full interactive player with Rich UI and keyboard controls."""
     player.start_generation()
@@ -339,7 +407,9 @@ def _run_interactive(player: AudioPlayer) -> None:
                 if action == "stop":
                     player.stop()
                     break
-                if action:
+                if action == "save_defaults":
+                    _handle_save_defaults(player, live)
+                elif action:
                     getattr(player, action)()
 
                 live.update(_build_display(player))
