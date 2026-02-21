@@ -70,9 +70,10 @@ class TestHelp:
 class TestReadCommand:
     """The full pipeline runs: arg parsing → create_player → (mocked) playback."""
 
-    def test_read_positional_text(self, fake_engine) -> None:
+    def test_read_positional_text(self, fake_engine, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "config.toml"  # does not exist → uses DEFAULTS
         p1, p2, p3 = _patch_tts_and_playback(fake_engine)
-        with p1, p2, p3 as mock_play:
+        with p1, p2, p3 as mock_play, patch("lector.config.CONFIG_PATH", cfg_file):
             result = runner.invoke(app, ["read", "Hello, world!"])
 
         assert result.exit_code == 0

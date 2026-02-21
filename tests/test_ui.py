@@ -121,6 +121,7 @@ class TestSaveDefaults:
         with (
             patch("lector.ui.save_config") as mock_save,
             patch("lector.ui._read_key", return_value="y"),
+            patch("lector.ui._build_display"),
         ):
             _handle_save_defaults(player, live)
 
@@ -134,6 +135,7 @@ class TestSaveDefaults:
         with (
             patch("lector.ui.save_config") as mock_save,
             patch("lector.ui._read_key", return_value="n"),
+            patch("lector.ui._build_display"),
         ):
             _handle_save_defaults(player, live)
 
@@ -147,6 +149,7 @@ class TestSaveDefaults:
         with (
             patch("lector.ui.save_config") as mock_save,
             patch("lector.ui._read_key", return_value="x"),
+            patch("lector.ui._build_display"),
         ):
             _handle_save_defaults(player, live)
 
@@ -161,6 +164,7 @@ class TestSaveDefaults:
             patch("lector.ui.save_config"),
             patch("lector.ui._read_key", return_value="y"),
             patch("lector.ui._set_flash") as mock_flash,
+            patch("lector.ui._build_display"),
         ):
             _handle_save_defaults(player, live)
 
@@ -176,6 +180,7 @@ class TestSaveDefaults:
         with (
             patch("lector.ui._read_key", return_value="n"),
             patch("lector.ui._set_flash") as mock_flash,
+            patch("lector.ui._build_display"),
         ):
             _handle_save_defaults(player, live)
 
