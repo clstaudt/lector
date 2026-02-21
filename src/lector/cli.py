@@ -8,6 +8,7 @@ import sys
 import typer
 from rich.console import Console
 
+from .config import load_config, save_config
 from .macos_service import install_quick_action, uninstall_quick_action
 from .tts import create_player, download_models, get_engine
 from .ui import run_player
@@ -28,10 +29,10 @@ def read(
     clipboard: bool = typer.Option(
         False, "--clipboard", "-c", help="Read text from the system clipboard (pbpaste)."
     ),
-    voice: str = typer.Option(
-        "af_sky", "--voice", "-v", help="Voice name (run 'lector voices' to list)."
+    voice: str | None = typer.Option(
+        None, "--voice", "-v", help="Voice name (run 'lector voices' to list)."
     ),
-    speed: float = typer.Option(1.0, "--speed", "-s", help="Speech speed (0.5-2.0)."),
+    speed: float | None = typer.Option(None, "--speed", "-s", help="Speech speed (0.5-2.0)."),
     lang: str = typer.Option("en-us", "--lang", "-l", help="Language code."),
 ) -> None:
     r"""Read text aloud.
@@ -46,6 +47,10 @@ def read(
         lector read --clipboard
         cat article.txt | lector read --voice af_nicole --speed 0.9
     """
+    cfg = load_config()
+    voice = voice or str(cfg["voice"])
+    speed = speed if speed is not None else float(cfg["speed"])  # type: ignore[arg-type]
+
     if clipboard:
         text = read_clipboard()
     elif text is None:
@@ -84,6 +89,34 @@ def download(
     """Download the Kokoro TTS model files (~300 MB)."""
     download_models(force=force)
     console.print("[green]✓ Models ready.[/green]")
+
+
+@app.command()
+def config(
+    voice: str | None = typer.Option(None, "--voice", "-v", help="Set preferred voice."),
+    speed: float | None = typer.Option(None, "--speed", "-s", help="Set preferred speed."),
+) -> None:
+    """Show or update persistent configuration.
+
+    Without flags, display the current effective settings.
+    With flags, save the given values as new defaults.
+    """
+    if voice is None and speed is None:
+        cfg = load_config()
+        console.print(f"voice = {cfg['voice']}")
+        console.print(f"speed = {cfg['speed']}")
+        return
+
+    try:
+        save_config(voice=voice, speed=speed)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
+
+    cfg = load_config()
+    console.print("[green]✓ Configuration saved.[/green]")
+    console.print(f"  voice = {cfg['voice']}")
+    console.print(f"  speed = {cfg['speed']}")
 
 
 @app.command(name="install-service")

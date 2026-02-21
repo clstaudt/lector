@@ -96,6 +96,7 @@ While audio is playing, use these keys:
 | `→ l`     | Next chunk |
 | `+`       | Speed up  |
 | `-`       | Slow down |
+| `s`       | Save current voice & speed as defaults |
 
 ### Voices
 
@@ -112,6 +113,18 @@ lector read --voice af_nicole --speed 0.9 "Hello!"
 
 See the full list at
 [Kokoro-82M/VOICES.md](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md).
+
+## Configuration
+
+Save your preferred voice and speed so you don't have to pass them every time:
+
+```bash
+lector config --voice af_nicole --speed 0.9
+```
+
+You can also press **`s`** during playback to save the current settings.
+Run `lector config` (no flags) to see what's active. Preferences are
+stored in `~/.lector/config.toml` — CLI flags always take priority.
 
 ## macOS right-click integration
 
@@ -134,6 +147,7 @@ Then:
 | Command                | Description                               |
 | ---------------------- | ----------------------------------------- |
 | `lector read`          | Read text aloud (arg / clipboard / stdin) |
+| `lector config`        | Show or set persistent preferences         |
 | `lector voices`        | List available voice names                |
 | `lector download`      | Pre-download model files (~300 MB)        |
 | `lector install-service` | Install macOS Quick Action              |

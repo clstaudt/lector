@@ -20,6 +20,7 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from lector.cli import app
+from lector.config import DEFAULTS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -76,10 +77,10 @@ class TestReadCommand:
 
         assert result.exit_code == 0
         mock_play.assert_called_once()
-        # The player passed to run_player should be a real AudioPlayer
+        # The player should get default voice/speed from config (== hardcoded DEFAULTS)
         player = mock_play.call_args[0][0]
-        assert player.voice == "af_sky"
-        assert player.speed == 1.0
+        assert player.voice == DEFAULTS["voice"]
+        assert player.speed == DEFAULTS["speed"]
 
     def test_read_custom_voice_and_speed(self, fake_engine) -> None:
         p1, p2, p3 = _patch_tts_and_playback(fake_engine)
@@ -261,3 +262,104 @@ class TestUninstallServiceCommand:
 
         assert result.exit_code == 1
         assert "only available on macOS" in result.output
+
+
+# ---------------------------------------------------------------------------
+# lector config
+# ---------------------------------------------------------------------------
+
+
+class TestConfigCommand:
+    """Verify the ``config`` command for showing and setting preferences."""
+
+    def test_show_defaults_when_no_file(self, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "config.toml"
+        with (
+            patch("lector.config.CONFIG_PATH", cfg_file),
+            patch(
+                "lector.cli.load_config",
+                wraps=__import__("lector.config", fromlist=["load_config"]).load_config,
+            ),
+        ):
+            result = runner.invoke(app, ["config"])
+
+        assert result.exit_code == 0
+        assert str(DEFAULTS["voice"]) in result.output
+        assert str(DEFAULTS["speed"]) in result.output
+
+    def test_set_voice(self, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "config.toml"
+        with (
+            patch("lector.config.CONFIG_PATH", cfg_file),
+            patch(
+                "lector.cli.save_config",
+                wraps=__import__("lector.config", fromlist=["save_config"]).save_config,
+            ),
+            patch(
+                "lector.cli.load_config",
+                wraps=__import__("lector.config", fromlist=["load_config"]).load_config,
+            ),
+        ):
+            result = runner.invoke(app, ["config", "--voice", "af_nicole"])
+
+        assert result.exit_code == 0
+        assert "Configuration saved" in result.output
+        assert "af_nicole" in result.output
+
+    def test_set_speed(self, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "config.toml"
+        with (
+            patch("lector.config.CONFIG_PATH", cfg_file),
+            patch(
+                "lector.cli.save_config",
+                wraps=__import__("lector.config", fromlist=["save_config"]).save_config,
+            ),
+            patch(
+                "lector.cli.load_config",
+                wraps=__import__("lector.config", fromlist=["load_config"]).load_config,
+            ),
+        ):
+            result = runner.invoke(app, ["config", "--speed", "1.3"])
+
+        assert result.exit_code == 0
+        assert "Configuration saved" in result.output
+        assert "1.3" in result.output
+
+    def test_rejects_invalid_speed(self) -> None:
+        result = runner.invoke(app, ["config", "--speed", "5.0"])
+        assert result.exit_code == 1
+        assert "Speed must be between" in result.output
+
+
+# ---------------------------------------------------------------------------
+# lector read — config-aware defaults
+# ---------------------------------------------------------------------------
+
+
+class TestReadConfigAware:
+    """Verify that ``read`` picks up config-file defaults when no CLI flags."""
+
+    def test_uses_config_voice(self, fake_engine, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "config.toml"
+        cfg_file.write_text('voice = "af_nicole"\nspeed = 1.0\n', encoding="utf-8")
+
+        p1, p2, p3 = _patch_tts_and_playback(fake_engine)
+        with p1, p2, p3 as mock_play, patch("lector.config.CONFIG_PATH", cfg_file):
+            result = runner.invoke(app, ["read", "Hello"])
+
+        assert result.exit_code == 0
+        player = mock_play.call_args[0][0]
+        assert player.voice == "af_nicole"
+
+    def test_cli_flag_overrides_config(self, fake_engine, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "config.toml"
+        cfg_file.write_text('voice = "af_nicole"\nspeed = 0.8\n', encoding="utf-8")
+
+        p1, p2, p3 = _patch_tts_and_playback(fake_engine)
+        with p1, p2, p3 as mock_play, patch("lector.config.CONFIG_PATH", cfg_file):
+            result = runner.invoke(app, ["read", "--voice", "af_sky", "--speed", "1.5", "Hello"])
+
+        assert result.exit_code == 0
+        player = mock_play.call_args[0][0]
+        assert player.voice == "af_sky"
+        assert player.speed == 1.5
