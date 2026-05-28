@@ -13,11 +13,16 @@ import subprocess
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
+import deal
 
+
+@deal.pre(
+    lambda: platform.system() == "Darwin",
+    exception=RuntimeError,
+    message="This feature is only available on macOS.",
+)
 def _require_macos() -> None:
     """Raise if the current platform is not macOS."""
-    if platform.system() != "Darwin":
-        raise RuntimeError("This feature is only available on macOS.")
 
 
 # ---------------------------------------------------------------------------

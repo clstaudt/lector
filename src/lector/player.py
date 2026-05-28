@@ -5,11 +5,23 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING
 
+import deal
 import numpy as np
 import sounddevice as sd
 
 if TYPE_CHECKING:
     from kokoro_onnx import Kokoro
+
+# ---------------------------------------------------------------------------
+# Contracts
+# ---------------------------------------------------------------------------
+
+_valid_speed = deal.chain(
+    deal.pre(lambda self: hasattr(self, "speed")),
+    deal.ensure(
+        lambda self, result=None: self.SPEED_MIN <= self.speed <= self.SPEED_MAX  # noqa: ARG005 — deal requires result param
+    ),
+)
 
 
 class AudioPlayer:
@@ -172,6 +184,7 @@ class AudioPlayer:
             self._play_pos = 0
             self._paused = False
 
+    @_valid_speed
     def speed_up(self) -> None:
         """Increase playback speed by one step."""
         old = self.speed
@@ -179,6 +192,7 @@ class AudioPlayer:
         if self.speed != old:
             self._invalidate_future_chunks()
 
+    @_valid_speed
     def speed_down(self) -> None:
         """Decrease playback speed by one step."""
         old = self.speed
@@ -214,12 +228,16 @@ class AudioPlayer:
     @property
     def playback_time(self) -> float:
         """Return current playback position in seconds."""
-        return self._play_pos / self.sample_rate
+        result = self._play_pos / self.sample_rate
+        assert result >= 0  # internal invariant check
+        return result
 
     @property
     def buffered_duration(self) -> float:
         """Return total duration of buffered audio in seconds."""
-        return len(self._buffer) / self.sample_rate
+        result = len(self._buffer) / self.sample_rate
+        assert result >= 0  # internal invariant check
+        return result
 
     @property
     def is_paused(self) -> bool:

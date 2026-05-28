@@ -5,6 +5,7 @@ from __future__ import annotations
 import urllib.request
 from pathlib import Path
 
+import deal
 from kokoro_onnx import Kokoro
 from rich.progress import BarColumn, DownloadColumn, Progress, TransferSpeedColumn
 
@@ -29,6 +30,9 @@ MODELS = {
 # ---------------------------------------------------------------------------
 
 
+@deal.post(lambda result: result[0].parent == result[1].parent)
+@deal.post(lambda result: result[0].suffix == ".onnx")
+@deal.post(lambda result: result[1].suffix == ".bin")
 def get_model_paths() -> tuple[Path, Path]:
     """Return ``(model_path, voices_path)``."""
     return MODEL_DIR / "kokoro-v1.0.onnx", MODEL_DIR / "voices-v1.0.bin"

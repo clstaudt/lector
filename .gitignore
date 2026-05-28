@@ -24,6 +24,9 @@ uv.lock
 # macOS
 .DS_Store
 
+# Hypothesis
+.hypothesis/
+
 # Lector models (large binary files)
 *.onnx
 *.bin
