@@ -9,9 +9,12 @@ plist generation, …) runs as real code.
 from __future__ import annotations
 
 import re
+import time
 
 import numpy as np
 import pytest
+
+from lector.player import AudioPlayer
 
 # ---------------------------------------------------------------------------
 # Lightweight Kokoro engine stand-in
@@ -19,7 +22,7 @@ import pytest
 
 
 class _FakeTokenizer:
-    """Mimics ``kokoro_onnx.Kokoro.tokenizer``."""
+    """Mimic ``kokoro_onnx.Kokoro.tokenizer``."""
 
     def phonemize(self, text: str, lang: str) -> str:
         """Return the text itself as 'phonemes' — good enough for testing."""
@@ -31,7 +34,7 @@ class FakeKokoroEngine:
 
     * ``tokenizer.phonemize`` → returns the text unchanged.
     * ``_split_phonemes``     → splits on sentence-ending punctuation.
-    * ``get_voice_style``     → returns a small random array.
+    * ``get_voice_style``     → returns a small zero array.
     * ``_create_audio``       → returns a short sine-wave chunk.
     * ``get_voices``          → returns a fixed voice list.
     """
@@ -45,10 +48,12 @@ class FakeKokoroEngine:
 
     @staticmethod
     def get_voices() -> list[str]:
+        """Return a fixed set of test voices."""
         return ["af_sky", "af_nicole", "am_adam"]
 
     @staticmethod
     def get_voice_style(voice: str) -> np.ndarray:
+        """Return a dummy voice style vector."""
         return np.zeros(256, dtype=np.float32)
 
     # -- phoneme splitting -------------------------------------------------
@@ -82,5 +87,33 @@ class FakeKokoroEngine:
 
 @pytest.fixture
 def fake_engine() -> FakeKokoroEngine:
-    """A ready-to-use fake TTS engine (no model files needed)."""
+    """Provide a ready-to-use fake TTS engine (no model files needed)."""
     return FakeKokoroEngine()
+
+
+def make_player(
+    fake_engine: FakeKokoroEngine, text: str = "First. Second. Third.", **kw
+) -> AudioPlayer:
+    """Build a real AudioPlayer wired to the fake engine."""
+    phonemes = fake_engine.tokenizer.phonemize(text, "en-us")
+    batches = fake_engine._split_phonemes(phonemes)
+    style = fake_engine.get_voice_style("af_sky")
+    defaults = {
+        "sample_rate": 24_000,
+        "voice": "af_sky",
+        "speed": 1.0,
+        "lang": "en-us",
+        "engine": fake_engine,
+        "voice_style": style,
+        "phoneme_batches": batches,
+    }
+    defaults.update(kw)
+    return AudioPlayer(**defaults)
+
+
+def generate_fully(player: AudioPlayer, timeout: float = 5.0) -> None:
+    """Start generation and block until complete (or timeout)."""
+    player.start_generation()
+    deadline = time.monotonic() + timeout
+    while not player.generation_done and time.monotonic() < deadline:
+        time.sleep(0.05)

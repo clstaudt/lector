@@ -7,11 +7,14 @@ import shutil
 import subprocess
 import sys
 
+import deal
+
 # ---------------------------------------------------------------------------
 # Text input helpers
 # ---------------------------------------------------------------------------
 
 
+@deal.post(lambda result: result == result.strip())
 def read_clipboard() -> str:
     """Read text from the system clipboard.
 
@@ -47,6 +50,7 @@ def read_clipboard() -> str:
     return result.stdout.strip()
 
 
+@deal.post(lambda result: result == result.strip())
 def read_stdin() -> str:
     """Read all text from stdin."""
     return sys.stdin.read().strip()

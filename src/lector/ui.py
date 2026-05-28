@@ -13,6 +13,7 @@ import tty
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import deal
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -120,7 +121,15 @@ def _read_key(timeout: float = 0.05) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+@deal.pre(
+    lambda seconds: (
+        seconds >= 0
+        and not (isinstance(seconds, float) and (seconds != seconds or seconds == float("inf")))
+    )
+)
+@deal.post(lambda result: ":" in result)
 def _fmt_time(seconds: float) -> str:
+    """Format *seconds* as ``M:SS``."""
     m, s = divmod(int(seconds), 60)
     return f"{m}:{s:02d}"
 
