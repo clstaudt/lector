@@ -10,6 +10,7 @@ dependencies = [
     "sounddevice>=0.5",
     "typer>=0.15",
     "rich>=13",
+    "fast-langdetect>=1.0.1",
 ]
 
 [project.scripts]
