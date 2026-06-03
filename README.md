@@ -83,6 +83,9 @@ pbpaste | lector read
 cat article.txt | lector read
 ```
 
+Lector detects the language of the text automatically and picks a
+matching voice — just paste and go.
+
 ### Player controls
 
 While audio is playing, use these keys:
@@ -97,14 +100,51 @@ While audio is playing, use these keys:
 | `+`       | Speed up  |
 | `-`       | Slow down |
 
+### Languages
+
+Lector detects the language of the input text automatically (the default
+`--lang auto`) and selects a suitable voice.  You can also set the
+language explicitly with `--lang`:
+
+| `--lang` | Language           | Default voice |
+| -------- | ------------------ | ------------- |
+| `auto`   | Auto-detect (default) | —          |
+| `en-us`  | English (US)       | `af_sky`      |
+| `en-gb`  | English (GB)       | `bf_emma`     |
+| `es`     | Spanish            | `ef_dora`     |
+| `fr-fr`  | French             | `ff_siwis`    |
+| `hi`     | Hindi              | `hf_alpha`    |
+| `it`     | Italian            | `if_sara`     |
+| `ja`     | Japanese           | `jf_alpha`    |
+| `pt-br`  | Portuguese (BR)    | `pf_dora`     |
+| `zh`     | Chinese (Mandarin) | `zf_xiaobei`  |
+| `de`     | German             | `martin`      |
+
+```bash
+# Auto-detected — no flags needed
+lector read "Bonjour, comment allez-vous ?"
+
+# Force a language
+lector read --lang de "Guten Morgen, wie geht es Ihnen?"
+```
+
+If a detected language is not supported, Lector warns and falls back to
+English.
+
+German uses a separate community model
+([Kokoro-82M-ONNX-German-Martin](https://huggingface.co/huggingFresse/Kokoro-82M-ONNX-German-Martin)),
+fetched automatically on first use (or in advance with
+`lector download --german`).
+
 ### Voices
 
 ```bash
-lector voices
+lector voices                 # all voices, grouped by language
+lector voices --lang fr-fr    # only French voices
 ```
 
 Popular English voices: `af_heart`, `af_nicole`, `af_sarah`, `af_sky`,
-`am_michael`.  Pick one with `--voice`:
+`am_michael`.  Pick one with `--voice` (this also implies the language):
 
 ```bash
 lector read --voice af_nicole --speed 0.9 "Hello!"
@@ -131,12 +171,16 @@ Then:
 
 ## Commands
 
-| Command                | Description                               |
-| ---------------------- | ----------------------------------------- |
-| `lector read`          | Read text aloud (arg / clipboard / stdin) |
-| `lector voices`        | List available voice names                |
-| `lector download`      | Pre-download model files (~300 MB)        |
-| `lector install-service` | Install macOS Quick Action              |
+| Command                  | Description                                       |
+| ------------------------ | ------------------------------------------------- |
+| `lector read`            | Read text aloud (arg / clipboard / stdin)         |
+| `lector voices`          | List available voices, grouped by language        |
+| `lector download`        | Pre-download model files (~300 MB)                |
+| `lector download --german` | Pre-download the German model                   |
+| `lector install-service` | Install macOS Quick Action                        |
+
+Useful `lector read` options: `--lang` (language code or `auto`),
+`--voice`, `--speed`.
 
 ## Updating
 

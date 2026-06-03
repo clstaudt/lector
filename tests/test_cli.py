@@ -7,6 +7,8 @@ Mocking strategy:
 - ``subprocess.run`` → intercepted only where it calls clipboard tools
 - ``install/uninstall_quick_action`` → real logic tested separately in
   test_macos_service; here we just prevent actual FS writes to ~/Library.
+- ``detect_language`` → returns "en-us" by default so tests don't hit
+  the fast-langdetect model.
 
 Everything else (argument parsing, text validation, ``create_player``
 pipeline) runs for real.
@@ -26,6 +28,8 @@ if TYPE_CHECKING:
 
 runner = CliRunner()
 
+_DEFAULT_DETECT = patch("lector.cli.detect_language", return_value="en-us")
+
 
 # ---------------------------------------------------------------------------
 # Helper: patch the heavy I/O boundaries
@@ -36,8 +40,9 @@ def _patch_tts_and_playback(fake_engine):
     """Context manager that replaces the TTS engine and suppresses audio."""
     return (
         patch("lector.tts.get_engine", return_value=fake_engine),
-        patch("lector.tts._kokoro", fake_engine),  # bypass singleton check
-        patch("lector.cli.run_player"),  # suppress audio hardware
+        patch("lector.tts._kokoro", fake_engine),
+        patch("lector.cli.run_player"),
+        _DEFAULT_DETECT,
     )
 
 
@@ -49,7 +54,6 @@ def _patch_tts_and_playback(fake_engine):
 class TestHelp:
     def test_no_args_shows_help(self) -> None:
         result = runner.invoke(app, [])
-        # Typer/Click returns exit code 0 or 2 for help display
         assert result.exit_code in (0, 2)
         assert "read" in result.output.lower()
 
@@ -70,20 +74,19 @@ class TestReadCommand:
     """The full pipeline runs: arg parsing → create_player → (mocked) playback."""
 
     def test_read_positional_text(self, fake_engine) -> None:
-        p1, p2, p3 = _patch_tts_and_playback(fake_engine)
-        with p1, p2, p3 as mock_play:
+        p1, p2, p3, p4 = _patch_tts_and_playback(fake_engine)
+        with p1, p2, p3 as mock_play, p4:
             result = runner.invoke(app, ["read", "Hello, world!"])
 
         assert result.exit_code == 0
         mock_play.assert_called_once()
-        # The player passed to run_player should be a real AudioPlayer
         player = mock_play.call_args[0][0]
         assert player.voice == "af_sky"
         assert player.speed == 1.0
 
     def test_read_custom_voice_and_speed(self, fake_engine) -> None:
-        p1, p2, p3 = _patch_tts_and_playback(fake_engine)
-        with p1, p2, p3 as mock_play:
+        p1, p2, p3, p4 = _patch_tts_and_playback(fake_engine)
+        with p1, p2, p3 as mock_play, p4:
             result = runner.invoke(app, ["read", "--voice", "af_nicole", "--speed", "1.5", "Test"])
 
         assert result.exit_code == 0
@@ -92,20 +95,63 @@ class TestReadCommand:
         assert player.speed == 1.5
 
     def test_read_custom_lang(self, fake_engine) -> None:
-        p1, p2, p3 = _patch_tts_and_playback(fake_engine)
-        with p1, p2, p3 as mock_play:
+        p1, p2, p3, p4 = _patch_tts_and_playback(fake_engine)
+        with p1, p2, p3 as mock_play, p4:
             result = runner.invoke(app, ["read", "--lang", "en-gb", "Good day"])
 
         assert result.exit_code == 0
         player = mock_play.call_args[0][0]
         assert player.lang == "en-gb"
 
-    def test_read_clipboard(self, fake_engine) -> None:
-        p1, p2, p3 = _patch_tts_and_playback(fake_engine)
+    def test_read_auto_lang_detects_english(self, fake_engine) -> None:
+        p1, p2, p3, _ = _patch_tts_and_playback(fake_engine)
         with (
             p1,
             p2,
             p3 as mock_play,
+            patch("lector.cli.detect_language", return_value="en-us"),
+        ):
+            result = runner.invoke(app, ["read", "Hello, world!"])
+
+        assert result.exit_code == 0
+        player = mock_play.call_args[0][0]
+        assert player.lang == "en-us"
+        assert player.voice == "af_sky"
+
+    def test_read_auto_lang_detects_german(self, fake_engine) -> None:
+        p1, p2, p3, _ = _patch_tts_and_playback(fake_engine)
+        with (
+            p1,
+            p2,
+            p3 as mock_play,
+            patch("lector.cli.detect_language", return_value="de"),
+            patch("lector.tts.get_engine", return_value=fake_engine),
+        ):
+            result = runner.invoke(app, ["read", "Guten Morgen, wie geht es Ihnen?"])
+
+        assert result.exit_code == 0
+        player = mock_play.call_args[0][0]
+        assert player.lang == "de"
+        assert player.voice == "martin"
+
+    def test_read_voice_implies_language(self, fake_engine) -> None:
+        """When --voice is given but --lang is auto, infer lang from voice prefix."""
+        p1, p2, p3, p4 = _patch_tts_and_playback(fake_engine)
+        with p1, p2, p3 as mock_play, p4:
+            result = runner.invoke(app, ["read", "--voice", "bf_emma", "Good day"])
+
+        assert result.exit_code == 0
+        player = mock_play.call_args[0][0]
+        assert player.lang == "en-gb"
+        assert player.voice == "bf_emma"
+
+    def test_read_clipboard(self, fake_engine) -> None:
+        p1, p2, p3, p4 = _patch_tts_and_playback(fake_engine)
+        with (
+            p1,
+            p2,
+            p3 as mock_play,
+            p4,
             patch("lector.cli.read_clipboard", return_value="From clipboard"),
         ):
             result = runner.invoke(app, ["read", "--clipboard"])
@@ -115,8 +161,8 @@ class TestReadCommand:
 
     def test_read_from_stdin(self, fake_engine) -> None:
         """Piped input (non-TTY stdin) should be read."""
-        p1, p2, p3 = _patch_tts_and_playback(fake_engine)
-        with p1, p2, p3 as mock_play:
+        p1, p2, p3, p4 = _patch_tts_and_playback(fake_engine)
+        with p1, p2, p3 as mock_play, p4:
             result = runner.invoke(app, ["read"], input="Hello from pipe")
 
         assert result.exit_code == 0
@@ -144,8 +190,8 @@ class TestReadCommand:
 
     def test_read_player_gets_phoneme_batches(self, fake_engine) -> None:
         """Verify create_player actually processed the text into chunks."""
-        p1, p2, p3 = _patch_tts_and_playback(fake_engine)
-        with p1, p2, p3 as mock_play:
+        p1, p2, p3, p4 = _patch_tts_and_playback(fake_engine)
+        with p1, p2, p3 as mock_play, p4:
             result = runner.invoke(app, ["read", "First sentence. Second sentence. Third."])
 
         assert result.exit_code == 0
@@ -159,21 +205,19 @@ class TestReadCommand:
 
 
 class TestVoicesCommand:
-    def test_lists_voices(self, fake_engine) -> None:
-        with patch("lector.cli.get_engine", return_value=fake_engine):
+    def test_lists_voices_table(self, fake_engine) -> None:
+        with patch("lector.tts.get_engine", return_value=fake_engine):
             result = runner.invoke(app, ["voices"])
 
         assert result.exit_code == 0
-        assert "af_sky" in result.output
-        assert "af_nicole" in result.output
-        assert "am_adam" in result.output
+        assert "Available Voices" in result.output
 
-    def test_voices_are_sorted(self, fake_engine) -> None:
-        with patch("lector.cli.get_engine", return_value=fake_engine):
-            result = runner.invoke(app, ["voices"])
+    def test_voices_filtered_by_lang(self, fake_engine) -> None:
+        with patch("lector.tts.get_engine", return_value=fake_engine):
+            result = runner.invoke(app, ["voices", "--lang", "en-us"])
 
-        lines = [line.strip() for line in result.output.strip().splitlines() if line.strip()]
-        assert lines == sorted(lines)
+        assert result.exit_code == 0
+        assert "English (US)" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +240,13 @@ class TestDownloadCommand:
 
         assert result.exit_code == 0
         mock_dl.assert_called_once_with(force=True)
+
+    def test_download_german(self) -> None:
+        with patch("lector.cli.download_german_models") as mock_dl:
+            result = runner.invoke(app, ["download", "--german"])
+
+        assert result.exit_code == 0
+        mock_dl.assert_called_once_with(force=False)
 
 
 # ---------------------------------------------------------------------------

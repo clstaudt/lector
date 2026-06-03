@@ -12,7 +12,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from lector.player import AudioPlayer
-from lector.tts import MODEL_DIR, MODELS, create_player, download_models, get_model_paths
+from lector.tts import (
+    GERMAN_MODELS,
+    MODEL_DIR,
+    MODELS,
+    create_player,
+    download_german_models,
+    download_models,
+    get_german_model_paths,
+    get_model_paths,
+)
 
 # ---------------------------------------------------------------------------
 # Pure model-path logic (no mocks)
@@ -42,6 +51,25 @@ class TestModelPaths:
 
     def test_model_urls_are_https(self) -> None:
         for url in MODELS.values():
+            assert url.startswith("https://")
+
+
+class TestGermanModelPaths:
+    def test_german_model_paths(self) -> None:
+        model, voices = get_german_model_paths()
+        assert model.name == "kokoro-martin.onnx"
+        assert voices.name == "voices-martin.npz"
+
+    def test_german_paths_share_parent(self) -> None:
+        model, voices = get_german_model_paths()
+        assert model.parent == voices.parent == MODEL_DIR
+
+    def test_german_models_dict_has_expected_keys(self) -> None:
+        assert "kokoro-martin.onnx" in GERMAN_MODELS
+        assert "voices-martin.npz" in GERMAN_MODELS
+
+    def test_german_model_urls_are_https(self) -> None:
+        for url in GERMAN_MODELS.values():
             assert url.startswith("https://")
 
 
@@ -96,6 +124,21 @@ class TestDownloadModels:
         assert (tmp_path / "kokoro-v1.0.onnx").read_bytes() == b"new model data"
 
 
+class TestDownloadGermanModels:
+    def test_download_creates_german_files(self, tmp_path: Path) -> None:
+        def fake_urlretrieve(url: str, dest: str | Path, reporthook=None) -> None:
+            Path(dest).write_bytes(b"fake german model data")
+
+        with (
+            patch("lector.tts.MODEL_DIR", tmp_path),
+            patch("lector.tts.urllib.request.urlretrieve", side_effect=fake_urlretrieve),
+        ):
+            download_german_models()
+
+        assert (tmp_path / "kokoro-martin.onnx").exists()
+        assert (tmp_path / "voices-martin.npz").exists()
+
+
 # ---------------------------------------------------------------------------
 # create_player — uses the fake engine from conftest
 # ---------------------------------------------------------------------------
@@ -129,3 +172,16 @@ class TestCreatePlayer:
             player = create_player("Hello.")
 
         assert player.sample_rate == 24_000
+
+    def test_default_voice_selected_for_lang(self, fake_engine) -> None:
+        with patch("lector.tts.get_engine", return_value=fake_engine):
+            player = create_player("Bonjour.", lang="fr-fr")
+
+        assert player.voice == "ff_siwis"
+
+    def test_german_lang_passes_de_to_phonemize(self, fake_engine) -> None:
+        with patch("lector.tts.get_engine", return_value=fake_engine):
+            player = create_player("Guten Tag.", voice="martin", lang="de")
+
+        assert player.lang == "de"
+        assert player.voice == "martin"
