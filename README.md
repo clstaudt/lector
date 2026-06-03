@@ -15,10 +15,13 @@ reading starts immediately, even for long texts.
 
 ## Prerequisites
 
+### uv (all platforms)
+
 You need [uv](https://docs.astral.sh/uv/), a Python package manager.
 It handles everything else (including Python itself) automatically.
 
-**Install uv** — open **Terminal** (⌘ Space → type "Terminal" → Enter) and run:
+<details>
+<summary><strong>macOS</strong></summary>
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -30,22 +33,18 @@ Or via [Homebrew](https://brew.sh/):
 brew install uv
 ```
 
-Close and reopen Terminal so the `uv` command is available.
+</details>
 
-### Linux: PortAudio
+<details>
+<summary><strong>Linux</strong></summary>
 
-Lector uses [sounddevice](https://python-sounddevice.readthedocs.io/) for audio
-playback, which requires the PortAudio library.  On Debian / Ubuntu:
+Install PortAudio (required by [sounddevice](https://python-sounddevice.readthedocs.io/) for playback):
 
 ```bash
-sudo apt install libportaudio2 portaudio19-dev
+sudo apt install libportaudio2 portaudio19-dev   # Debian / Ubuntu
 ```
 
-On macOS, PortAudio is bundled with the sounddevice wheel — no extra step needed.
-
-### Linux: Clipboard
-
-For `lector read --clipboard` to work on Linux, install one of:
+For `lector read --clipboard`, install a clipboard provider:
 
 ```bash
 sudo apt install xclip          # X11
@@ -53,21 +52,38 @@ sudo apt install xsel           # X11 (alternative)
 sudo apt install wl-clipboard   # Wayland
 ```
 
+Then install uv:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+</details>
+
+<details>
+<summary><strong>Windows</strong></summary>
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+</details>
+
+Restart your shell after installing so that the `uv` command is available.
+
 ## Install
 
 ```bash
 uv tool install git+https://github.com/clstaudt/lector
 ```
 
-Or, if you have the source code locally:
+Or from a local checkout:
 
 ```bash
 uv tool install /path/to/lector
 ```
 
-This installs `lector` as a system-wide command.  The first time you
-use it, model files (~300 MB) are downloaded automatically to
-`~/.lector/models/`.
+The first run downloads model files (~300 MB) to `~/.lector/models/`.
 
 ## Usage
 
@@ -79,32 +95,27 @@ lector read "The quick brown fox jumps over the lazy dog."
 lector read --clipboard
 
 # Pipe text in
-pbpaste | lector read
 cat article.txt | lector read
 ```
 
-Lector detects the language of the text automatically and picks a
-matching voice — just paste and go.
+Lector detects the language automatically and picks a matching voice.
 
 ### Player controls
 
-While audio is playing, use these keys:
-
-| Key       | Action  |
-| --------- | ------- |
+| Key       | Action         |
+| --------- | -------------- |
 | `Space`   | Pause / resume |
-| `q`       | Quit    |
-| `r`       | Restart |
+| `q`       | Quit           |
+| `r`       | Restart        |
 | `← h`     | Previous chunk |
-| `→ l`     | Next chunk |
-| `+`       | Speed up  |
-| `-`       | Slow down |
+| `→ l`     | Next chunk     |
+| `+`       | Speed up       |
+| `-`       | Slow down      |
 
 ### Languages
 
-Lector detects the language of the input text automatically (the default
-`--lang auto`) and selects a suitable voice.  You can also set the
-language explicitly with `--lang`:
+Language is detected automatically by default (`--lang auto`).
+Set it explicitly with `--lang`:
 
 | `--lang` | Language           | Default voice |
 | -------- | ------------------ | ------------- |
@@ -121,15 +132,11 @@ language explicitly with `--lang`:
 | `de`     | German             | `martin`      |
 
 ```bash
-# Auto-detected — no flags needed
-lector read "Bonjour, comment allez-vous ?"
-
-# Force a language
-lector read --lang de "Guten Morgen, wie geht es Ihnen?"
+lector read "Bonjour, comment allez-vous ?"           # auto-detected
+lector read --lang de "Guten Morgen, wie geht es Ihnen?"  # explicit
 ```
 
-If a detected language is not supported, Lector warns and falls back to
-English.
+If a detected language is not supported, Lector falls back to English.
 
 German uses a separate community model
 ([Kokoro-82M-ONNX-German-Martin](https://huggingface.co/huggingFresse/Kokoro-82M-ONNX-German-Martin)),
@@ -143,8 +150,7 @@ lector voices                 # all voices, grouped by language
 lector voices --lang fr-fr    # only French voices
 ```
 
-Popular English voices: `af_heart`, `af_nicole`, `af_sarah`, `af_sky`,
-`am_michael`.  Pick one with `--voice` (this also implies the language):
+Pick a specific voice with `--voice` (this also implies the language):
 
 ```bash
 lector read --voice af_nicole --speed 0.9 "Hello!"
@@ -153,34 +159,30 @@ lector read --voice af_nicole --speed 0.9 "Hello!"
 See the full list at
 [Kokoro-82M/VOICES.md](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md).
 
-## macOS right-click integration
+## macOS: right-click integration
 
 Add a **Quick Action** so *Read with Lector* appears in the right-click
-Services menu — just like the built-in "Start Speaking":
+Services menu:
 
 ```bash
 lector install-service
 ```
 
-Then:
-
-1. Select text in any app.
-2. Right-click → **Services** → **Read with Lector**.
-3. (First time you may need to enable it in
-   **System Settings → Keyboard → Keyboard Shortcuts → Services**.)
+Select text in any app → right-click → **Services** → **Read with Lector**.
+You may need to enable it in
+**System Settings → Keyboard → Keyboard Shortcuts → Services**.
 
 ## Commands
 
-| Command                  | Description                                       |
-| ------------------------ | ------------------------------------------------- |
-| `lector read`            | Read text aloud (arg / clipboard / stdin)         |
-| `lector voices`          | List available voices, grouped by language        |
-| `lector download`        | Pre-download model files (~300 MB)                |
-| `lector download --german` | Pre-download the German model                   |
-| `lector install-service` | Install macOS Quick Action                        |
+| Command                    | Description                          |
+| -------------------------- | ------------------------------------ |
+| `lector read`              | Read text aloud (arg / clipboard / stdin) |
+| `lector voices`            | List available voices by language    |
+| `lector download`          | Pre-download model files (~300 MB)   |
+| `lector download --german` | Pre-download the German model        |
+| `lector install-service`   | Install macOS Quick Action           |
 
-Useful `lector read` options: `--lang` (language code or `auto`),
-`--voice`, `--speed`.
+Key `lector read` options: `--lang`, `--voice`, `--speed`.
 
 ## Updating
 
